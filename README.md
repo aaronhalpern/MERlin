@@ -30,6 +30,19 @@ cell boundaries represented in the raw images.
 
 For more information on installation and usage, please see the [documentation](https://emanuega.github.io/MERlin/).
 
+## Installation Notes
+
+Please note the specific package versions in requirements.txt
+ 
+Create conda environment
+$conda create --name merlin python=3.6.10
+Install the following packages with conda (see note in documentation)
+$conda install rtree=0.9.4
+$conda install pytables=3.6.1
+After cloning repository
+$pip install -e MERlin
+Finally, validate that pytest runs correctly
+
 ## Authors
 
 * [**George Emanuel**](mailto:emanuega0@gmail.com) - *Initial work* 
