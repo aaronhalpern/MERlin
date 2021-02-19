@@ -38,8 +38,8 @@ Create conda environment
 $conda create --name merlin python=3.6.10  
 Install the following packages with conda (see note in documentation)  
 $conda install rtree=0.9.4  
-$conda install pytables=3.6.1 
-$conda install shapely=1.6.4
+$conda install pytables=3.6.1  
+$conda install shapely=1.6.4  
 After cloning repository  
 $pip install -e MERlin  
 Finally, validate that pytest runs correctly  
