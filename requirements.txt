@@ -21,7 +21,7 @@ cython>=0.21
 snakemake==5.20.1
 h5py==2.10.0
 requests>=2.18.0
-shapely==1.6.4
+Shapely==1.6.4.post2
 rtree==0.9.4
 tables==3.6.1
 boto3
