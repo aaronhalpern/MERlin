@@ -54,6 +54,8 @@ def build_parser():
                         help='the data home directory')
     parser.add_argument('-s', '--analysis-home',
                         help='the analysis home directory')
+    parser.add_argument('-q', '--parameters-home',
+                        help='the parameters home directory')
     parser.add_argument('-k', '--snakemake-parameters',
                         help='the name of the snakemake parameters file')
     parser.add_argument('--no_report',
@@ -110,6 +112,23 @@ def merlin():
         dataHome=_clean_string_arg(args.data_home),
         analysisHome=_clean_string_arg(args.analysis_home)
     )
+    
+    if args.parameters_home is not None:
+        print('specifying parameter file in arg parser')
+        m.PARAMETERS_HOME = _clean_string_arg(args.parameters_home)
+        m.ANALYSIS_PARAMETERS_HOME = os.sep.join(
+                [m.PARAMETERS_HOME, 'analysis'])
+        m.CODEBOOK_HOME = os.sep.join(
+                [m.PARAMETERS_HOME, 'codebooks'])
+        m.DATA_ORGANIZATION_HOME = os.sep.join(
+                [m.PARAMETERS_HOME, 'dataorganization'])
+        m.POSITION_HOME = os.sep.join(
+                [m.PARAMETERS_HOME, 'positions'])
+        m.MICROSCOPE_PARAMETERS_HOME = os.sep.join(
+                [m.PARAMETERS_HOME, 'microscope'])
+        m.FPKM_HOME = os.sep.join([m.PARAMETERS_HOME, 'fpkm'])
+        m.SNAKEMAKE_PARAMETERS_HOME = os.sep.join(
+            [m.PARAMETERS_HOME, 'snakemake'])
 
     parametersHome = m.ANALYSIS_PARAMETERS_HOME
     e = executor.LocalExecutor(coreCount=args.core_count)
@@ -160,7 +179,7 @@ def generate_analysis_tasks_and_snakefile(dataSet: dataset.MERFISHDataSet,
 
 def run_with_snakemake(
         dataSet: dataset.MERFISHDataSet, snakefilePath: str, coreCount: int,
-        snakemakeParameters: Dict = {}, report: bool = True):
+        snakemakeParameters: Dict = {}, report: bool = False):
     print('Running MERlin pipeline through snakemake')
     snakemake.snakemake(snakefilePath, cores=coreCount,
                         workdir=dataSet.get_snakemake_path(),
