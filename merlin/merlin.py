@@ -103,16 +103,6 @@ def merlin():
         configure_environment()
         return
 
-    dataSet = dataset.MERFISHDataSet(
-        args.dataset,
-        dataOrganizationName=_clean_string_arg(args.data_organization),
-        codebookNames=args.codebook,
-        microscopeParametersName=_clean_string_arg(args.microscope_parameters),
-        positionFileName=_clean_string_arg(args.positions),
-        dataHome=_clean_string_arg(args.data_home),
-        analysisHome=_clean_string_arg(args.analysis_home)
-    )
-    
     if args.parameters_home is not None:
         print('specifying parameter file in arg parser')
         m.PARAMETERS_HOME = _clean_string_arg(args.parameters_home)
@@ -130,6 +120,16 @@ def merlin():
         m.SNAKEMAKE_PARAMETERS_HOME = os.sep.join(
             [m.PARAMETERS_HOME, 'snakemake'])
 
+    dataSet = dataset.MERFISHDataSet(
+        args.dataset,
+        dataOrganizationName=_clean_string_arg(args.data_organization),
+        codebookNames=args.codebook,
+        microscopeParametersName=_clean_string_arg(args.microscope_parameters),
+        positionFileName=_clean_string_arg(args.positions),
+        dataHome=_clean_string_arg(args.data_home),
+        analysisHome=_clean_string_arg(args.analysis_home)
+    )
+    
     parametersHome = m.ANALYSIS_PARAMETERS_HOME
     e = executor.LocalExecutor(coreCount=args.core_count)
     snakefilePath = None
