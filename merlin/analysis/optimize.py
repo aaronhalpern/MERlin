@@ -32,6 +32,8 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
             self.parameters['optimize_chromatic_correction'] = False
         if 'crop_width' not in self.parameters:
             self.parameters['crop_width'] = 0
+        if 'random_seed' not in self.parameters:
+            self.parameters['random_seed'] = 42
 
         if 'fov_index' in self.parameters:
             logger = self.dataSet.get_logger(self)
@@ -43,8 +45,10 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
         else:
             self.parameters['fov_index'] = []
             for i in range(self.parameters['fov_per_iteration']):
+                np.random.seed(self.parameters['random_seed'])
                 fovIndex = int(np.random.choice(
                     list(self.dataSet.get_fovs())))
+                np.random.seed(self.parameters['random_seed'])
                 zIndex = int(np.random.choice(
                     list(range(len(self.dataSet.get_z_positions())))))
                 self.parameters['fov_index'].append([fovIndex, zIndex])
