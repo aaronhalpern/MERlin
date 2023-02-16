@@ -35,6 +35,9 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
         if 'random_seed' not in self.parameters:
             self.parameters['random_seed'] = 42
 
+        # set the random seed
+        np.random.seed(self.parameters['random_seed'])
+
         if 'fov_index' in self.parameters:
             logger = self.dataSet.get_logger(self)
             logger.info('Setting fov_per_iteration to length of fov_index')
@@ -43,16 +46,17 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
                 len(self.parameters['fov_index'])
 
         else:
+            
+            # this should fix the issue of optimize choosing different FOVs on rerun...
             self.parameters['fov_index'] = []
-            for i in range(self.parameters['fov_per_iteration']):
-                np.random.seed(self.parameters['random_seed'])
-                fovIndex = int(np.random.choice(
-                    list(self.dataSet.get_fovs())))
-                np.random.seed(self.parameters['random_seed'])
-                zIndex = int(np.random.choice(
-                    list(range(len(self.dataSet.get_z_positions())))))
-                self.parameters['fov_index'].append([fovIndex, zIndex])
-
+            fovIndex = np.random.choice(list(self.dataSet.get_fovs()), 
+                size = self.parameters['fov_per_iteration'])
+                    
+            zIndex = np.random.choice(list(range(len(self.dataSet.get_z_positions()))),
+                size = self.parameters['fov_per_iteration'])
+                
+            self.parameters['fov_index'] = [[int(fov),int(ind)] for fov, ind in zip(fovIndex, zIndex)]
+    
     def get_estimated_memory(self):
         return 4000
 
