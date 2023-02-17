@@ -44,10 +44,22 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
 
             self.parameters['fov_per_iteration'] = \
                 len(self.parameters['fov_index'])
-
+        
+        # specify fovs and zindices separately
+        elif ('fovs' in self.parameters) and ('zIndices' in self.parameters):
+        
+            self.parameters['fov_index'] = []
+            fovIndex = np.random.choice(list(self.parameters['fovs']), 
+                size = self.parameters['fov_per_iteration'])
+                    
+            zIndex = np.random.choice(list(self.parameters['zIndices']),
+                size = self.parameters['fov_per_iteration'])
+                
+            self.parameters['fov_index'] = [[int(fov),int(ind)] for fov, ind in zip(fovIndex, zIndex)]
+            
+        # this should fix the issue of optimize choosing different FOVs on rerun...
         else:
             
-            # this should fix the issue of optimize choosing different FOVs on rerun...
             self.parameters['fov_index'] = []
             fovIndex = np.random.choice(list(self.dataSet.get_fovs()), 
                 size = self.parameters['fov_per_iteration'])
