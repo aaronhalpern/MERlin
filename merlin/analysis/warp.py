@@ -186,6 +186,7 @@ class FiducialCorrelationWarp(Warp):
     def _filter(self, inputImage: np.ndarray) -> np.ndarray:
         highPassSigma = self.parameters['highpass_sigma']
         highPassFilterSize = int(2 * np.ceil(2 * highPassSigma) + 1)
+        inputImage = cv2.medianBlur(inputImage, ksize = 3)
 
         return inputImage.astype(float) - cv2.GaussianBlur(
             inputImage, (highPassFilterSize, highPassFilterSize),
