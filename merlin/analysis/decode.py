@@ -47,6 +47,8 @@ class Decode(BarcodeSavingParallelAnalysisTask):
             self.parameters['crop_width'] = 100
         if 'write_decoded_images' not in self.parameters:
             self.parameters['write_decoded_images'] = True
+        if 'write_decoded_FOVs' not in self.parameters:
+            self.parameters['write_decoded_FOVs'] = None
         if 'minimum_area' not in self.parameters:
             self.parameters['minimum_area'] = 0
         if 'distance_threshold' not in self.parameters:
@@ -163,9 +165,15 @@ class Decode(BarcodeSavingParallelAnalysisTask):
                 del normalizedPixelTraces
 
         if self.parameters['write_decoded_images']:
-            self._save_decoded_images(
-                fragmentIndex, zPositionCount, decodedImages, magnitudeImages,
-                distances)
+            if self.parameters['write_decoded_FOVs'] is not None:
+                if fragmentIndex in self.parameters['write_decoded_FOVs']:
+                    self._save_decoded_images(
+                        fragmentIndex, zPositionCount, decodedImages, magnitudeImages,
+                        distances)
+            else:
+                self._save_decoded_images(
+                    fragmentIndex, zPositionCount, decodedImages, magnitudeImages,
+                    distances)
 
         if self.parameters['remove_z_duplicated_barcodes']:
             bcDB = self.get_barcode_database()
