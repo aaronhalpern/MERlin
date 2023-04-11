@@ -4,6 +4,7 @@ from skimage import transform
 from typing import Dict
 from typing import List
 import pandas
+import random
 
 from merlin.analysis import decode
 from merlin.util import decoding
@@ -32,12 +33,11 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
             self.parameters['optimize_chromatic_correction'] = False
         if 'crop_width' not in self.parameters:
             self.parameters['crop_width'] = 0
-        if 'random_seed' not in self.parameters:
-            self.parameters['random_seed'] = 42
-
-        # set the random seed
-        np.random.seed(self.parameters['random_seed'])
-
+        if 'random_seed' in self.parameters:
+            # set the random seed
+            # make sure to set a different one for each optimize
+            np.random.seed(self.parameters['random_seed'])
+         
         if 'fov_index' in self.parameters:
             logger = self.dataSet.get_logger(self)
             logger.info('Setting fov_per_iteration to length of fov_index')
