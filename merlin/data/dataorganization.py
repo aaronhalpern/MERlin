@@ -55,7 +55,11 @@ class DataOrganization(object):
 
             self.data = pandas.read_csv(
                 filePath,
-                converters={'frame': _parse_int_list, 'zPos': _parse_list})
+                converters={'frame': _parse_int_list,
+                            'fiducial3DStackFrames': _parse_int_list,
+                            'zPos': _parse_list,
+                            'fiducial3DzPos': _parse_list}
+                            )
             self.data['readoutName'] = self.data['readoutName'].str.strip()
             self._dataSet.save_dataframe_to_csv(
                     self.data, 'dataorganization', index=False)
@@ -63,10 +67,17 @@ class DataOrganization(object):
         else:
             self.data = self._dataSet.load_dataframe_from_csv(
                 'dataorganization',
-                converters={'frame': _parse_int_list, 'zPos': _parse_list})
+                converters={'frame': _parse_int_list,
+                            'fiducial3DStackFrames': _parse_int_list,
+                            'zPos': _parse_list,
+                            'fiducial3DzPos': _parse_list}
+                            )
 
         stringColumns = ['readoutName', 'channelName', 'imageType',
-                         'imageRegExp', 'fiducialImageType', 'fiducialRegExp']
+                         'imageRegExp', 'fiducialImageType', 'fiducialRegExp',
+                         'fiducial3DImageType', 'fiducial3DRegExp',
+                         
+                         ]
         self.data[stringColumns] = self.data[stringColumns].astype('str')
         self._map_image_files()
 
@@ -174,6 +185,58 @@ class DataOrganization(object):
             The index of the fiducial frame in the corresponding image file
         """
         return self.data.iloc[dataChannel]['fiducialFrame']
+
+    ### new for 3D registration
+
+    def get_fiducial3D_filename(self, dataChannel: int, fov: int) -> str:
+        """Get the path for the image file that contains the 3D fiducial
+        image for the specified dataChannel and fov.
+
+        Args:
+            dataChannel: index of the data channel
+            fov: index of the field of view
+        Returns:
+            The full path to the image file containing the fiducials
+        """
+
+        imageType = self.data.loc[dataChannel, 'fiducial3DImageType']
+        imagingRound = \
+            self.data.loc[dataChannel, 'fiducial3DImagingRound']
+        return self._get_image_path(imageType, fov, imagingRound)
+
+    def get_fiducial3D_base_frame_index(self, dataChannel: int) -> int:
+        """Get the index of the frame containing the 3D fiducial image
+        for the specified data channel.
+
+        Args:
+            dataChannel: index of the data channel
+        Returns:
+            The index of the base frame in the 3D stack
+        """
+        return self.data.iloc[dataChannel]['fiducial3DBaseFrame']
+        
+    def get_fiducial3D_stack_frame_indices(self, dataChannel: int) -> List[int]:
+        """Get the indices of the frames containing the 3D fiducial image stack
+        for the specified data channel.
+
+        Args:
+            dataChannel: index of the data channel
+        Returns:
+            The indices of the fiducial frame in the 3D stack
+        """
+        return self.data.iloc[dataChannel]['fiducial3DStackFrames']
+        
+    def get_fiducial3D_stack_frame_zPos(self, dataChannel: int) -> List[int]:
+        """Get the zpos of the frames containing the 3D fiducial image stack
+        for the specified data channel.
+        Args:
+            dataChannel: index of the data channel
+        Returns:
+            The zpos of the fiducial frames in 3D stack
+        """
+        return self.data.iloc[dataChannel]['fiducial3DzPos']
+
+    ###
 
     def get_image_filename(self, dataChannel: int, fov: int) -> str:
         """Get the path for the image file that contains the

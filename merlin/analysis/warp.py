@@ -205,3 +205,76 @@ class FiducialCorrelationWarp(Warp):
         transformations = [transform.SimilarityTransform(
             translation=[-x[1], -x[0]]) for x in offsets]
         self._process_transformations(transformations, fragmentIndex)
+
+class FiducialCorrelationWarp3D(FiducialCorrelationWarp):
+
+    """
+    An analysis task that warps a set of images taken in different imaging
+    rounds based on the crosscorrelation between fiducial images.
+    """
+
+    def __init__(self, dataSet, parameters=None, analysisName=None):
+        super().__init__(dataSet, parameters, analysisName)
+
+    def fragment_count(self):
+        return len(self.dataSet.get_fovs())
+
+    def get_estimated_memory(self):
+        return 4096
+
+    def get_estimated_time(self):
+        return 5
+
+    def _find_2D_offsets(self, fragmentIndex: int):
+        # this is standard MERFISH registration
+        fixedImage = self._filter(
+                self.dataSet.get_fiducial_image(0, fragmentIndex))
+              
+        offsets = [feature.register_translation(
+            fixedImage,
+            self._filter(self.dataSet.get_fiducial_image(x, fragmentIndex)),
+            100)[0] for x in
+                   self.dataSet.get_data_organization().get_data_channels()]
+                   
+        transformations = [transform.SimilarityTransform(
+            translation=[-x[1], -x[0]]) for x in offsets]
+            
+        self._process_transformations(transformations, fragmentIndex)
+    
+    def _find_2D_base_offsets_from_3D_stacks(self, fragmentIndex: int):
+        # this is for registration of a bead stack at the top of a 3D tissue
+        # first register the zero plane
+        fixedImage = self._filter(
+                self.dataSet.get_fiducial3D_base_image(0, fragmentIndex))
+              
+        offsets = [feature.register_translation(
+            fixedImage,
+            self._filter(self.dataSet.get_fiducial3D_base_image(x, fragmentIndex)),
+            100)[0] for x in
+                   self.dataSet.get_data_organization().get_data_channels()]
+                   
+        transformations = [transform.SimilarityTransform(
+            translation=[-x[1], -x[0]]) for x in offsets]
+        
+        ####  NEED TO PROCESS THIS DIFFERENTLY....       
+        self._process_transformations(transformations, fragmentIndex)
+        ####
+    
+    def _find_3D_offsets_from_3D_stacks():
+    
+    
+
+
+    def _run_analysis(self, fragmentIndex: int):
+        # TODO - this can be more efficient since some images should
+        # use the same alignment if they are from the same imaging round
+        fixedImage = self._filter(
+            self.dataSet.get_fiducial_image(0, fragmentIndex))
+        offsets = [feature.register_translation(
+            fixedImage,
+            self._filter(self.dataSet.get_fiducial_image(x, fragmentIndex)),
+            100)[0] for x in
+                   self.dataSet.get_data_organization().get_data_channels()]
+        transformations = [transform.SimilarityTransform(
+            translation=[-x[1], -x[0]]) for x in offsets]
+        self._process_transformations(transformations, fragmentIndex)
