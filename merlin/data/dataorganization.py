@@ -337,21 +337,28 @@ class DataOrganization(object):
                 self._truncate_file_path)
 
         except FileNotFoundError:
-            uniqueEntries = self.data.drop_duplicates(
-                subset=['imageType', 'imageRegExp'], keep='first')
-
-            uniqueTypes = uniqueEntries['imageType']
-            uniqueIndexes = uniqueEntries.index.values.tolist()
+        
+            # this should now handle adding fiducial files
+            # note that some may get added twice - remove them later
+            uniqueTypes = []
+            uniqueRegExps = []
+            for imtype, imregex in zip(['imageType','fiducialImageType','fiducial3DImageType'],
+                              ['imageRegExp','fiducialRegExp','fiducial3DRegExp']):
+                              
+                uniqueEntries = self.data.drop_duplicates(
+                    subset = [imtype, imregex], keep='first')
+                            
+                uniqueTypes += list(uniqueEntries[imtype])
+                uniqueRegExps += list(uniqueEntries[imregex])
+               
 
             fileNames = self._dataSet.get_image_file_names()
             if len(fileNames) == 0:
                 raise dataset.DataFormatException(
                     'No image files found at %s.' % self._dataSet.rawDataPath)
             fileData = []
-            for currentType, currentIndex in zip(uniqueTypes, uniqueIndexes):
-                matchRE = re.compile(
-                        self.data.imageRegExp[currentIndex])
-
+            for currentType, currentRegExp in zip(uniqueTypes, uniqueRegExps):
+                matchRE = re.compile(currentRegExp)
                 matchingFiles = False
                 for currentFile in fileNames:
                     matchedName = matchRE.match(os.path.split(currentFile)[-1])
@@ -368,10 +375,12 @@ class DataOrganization(object):
                     raise dataset.DataFormatException(
                         'Unable to identify image files matching regular '
                         + 'expression %s for image type %s.'
-                        % (self.data.imageRegExp[currentIndex],
+                        % (currentRegExp,
                            currentType))
-
-            self.fileMap = pandas.DataFrame(fileData)
+            
+            # drop duplicates to remove duplicate file names
+            self.fileMap = pandas.DataFrame(fileData).drop_duplicates() 
+            
             self.fileMap[['imagingRound', 'fov']] = \
                 self.fileMap[['imagingRound', 'fov']].astype(int)
             self.fileMap['imagePath'] = self.fileMap['imagePath'].apply(
