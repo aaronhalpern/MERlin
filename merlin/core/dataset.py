@@ -1183,7 +1183,8 @@ class MERFISHDataSet(ImageDataSet):
             self.dataOrganization.get_fiducial3D_base_frame_index(dataChannel))
 
     def get_fiducial3D_stack(self, dataChannel, fov):
-        return np.array([self.load_image(
+        return np.array([
+            self.load_image(
             self.dataOrganization.get_fiducial3D_filename(dataChannel, fov),
             i) for i in self.dataOrganization.get_fiducial3D_stack_frame_indices(dataChannel)])
 

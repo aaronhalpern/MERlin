@@ -1,8 +1,10 @@
 from typing import List
 from typing import Union
 import numpy as np
+from skimage import registration
 from skimage import transform
 from skimage import feature
+
 import cv2
 
 from merlin.core import analysistask
@@ -197,10 +199,10 @@ class FiducialCorrelationWarp(Warp):
         # use the same alignment if they are from the same imaging round
         fixedImage = self._filter(
             self.dataSet.get_fiducial_image(0, fragmentIndex))
-        offsets = [feature.register_translation(
+        offsets = [registration.phase_cross_correlation(
             fixedImage,
             self._filter(self.dataSet.get_fiducial_image(x, fragmentIndex)),
-            100)[0] for x in
+            upsample_factor = 100)[0] for x in
                    self.dataSet.get_data_organization().get_data_channels()]
         transformations = [transform.SimilarityTransform(
             translation=[-x[1], -x[0]]) for x in offsets]
@@ -230,16 +232,16 @@ class FiducialCorrelationWarp3D(FiducialCorrelationWarp):
         fixedImage = self._filter(
                 self.dataSet.get_fiducial_image(0, fragmentIndex))
               
-        offsets = [feature.register_translation(
+        offsets = [registration.phase_cross_correlation(
             fixedImage,
             self._filter(self.dataSet.get_fiducial_image(x, fragmentIndex)),
-            100)[0] for x in
+            upsample_factor = 100)[0] for x in
                    self.dataSet.get_data_organization().get_data_channels()]
                    
         transformations = [transform.SimilarityTransform(
             translation=[-x[1], -x[0]]) for x in offsets]
-            
-        self._process_transformations(transformations, fragmentIndex)
+        
+        return transformations
     
     def _find_2D_base_offsets_from_3D_stacks(self, fragmentIndex: int):
         # this is for registration of a bead stack at the top of a 3D tissue
@@ -247,34 +249,34 @@ class FiducialCorrelationWarp3D(FiducialCorrelationWarp):
         fixedImage = self._filter(
                 self.dataSet.get_fiducial3D_base_image(0, fragmentIndex))
               
-        offsets = [feature.register_translation(
+        offsets = [registration.phase_cross_correlation(
             fixedImage,
             self._filter(self.dataSet.get_fiducial3D_base_image(x, fragmentIndex)),
-            100)[0] for x in
+            upsample_factor = 100)[0] for x in
                    self.dataSet.get_data_organization().get_data_channels()]
                    
         transformations = [transform.SimilarityTransform(
             translation=[-x[1], -x[0]]) for x in offsets]
         
-        ####  NEED TO PROCESS THIS DIFFERENTLY....       
-        self._process_transformations(transformations, fragmentIndex)
-        ####
+        return transformations
     
-    def _find_3D_offsets_from_3D_stacks():
-    
-    
+    def _find_3D_offsets_from_3D_stacks(self, fragmentIndex: int):
+        # this is for registration of a bead stack at the top of a 3D tissue
+        # first register the zero plane
+        fixedImage = self.dataSet.get_fiducial3D_stack(0, fragmentIndex)
+        offsets = [registration.phase_cross_correlation(fixedImage,
+            self.dataSet.get_fiducial3D_stack(x, fragmentIndex),
+            upsample_factor = 100)[0] for x in
+            self.dataSet.get_data_organization().get_data_channels()]
 
+        # will need skimage > 0.17 for XYZ similarity transform
+        # given by translation = x, y, z
+        transformations = [transform.SimilarityTransform(translation=[-x[2], -x[1], -x[0]]) for x in offsets]
+        return transformations
+        
+
+    
 
     def _run_analysis(self, fragmentIndex: int):
-        # TODO - this can be more efficient since some images should
-        # use the same alignment if they are from the same imaging round
-        fixedImage = self._filter(
-            self.dataSet.get_fiducial_image(0, fragmentIndex))
-        offsets = [feature.register_translation(
-            fixedImage,
-            self._filter(self.dataSet.get_fiducial_image(x, fragmentIndex)),
-            100)[0] for x in
-                   self.dataSet.get_data_organization().get_data_channels()]
-        transformations = [transform.SimilarityTransform(
-            translation=[-x[1], -x[0]]) for x in offsets]
-        self._process_transformations(transformations, fragmentIndex)
+        pass
+
