@@ -170,6 +170,10 @@ class FiducialCorrelationWarp(Warp):
 
         if 'highpass_sigma' not in self.parameters:
             self.parameters['highpass_sigma'] = 3
+            
+        # add simple way to bypass fiducial warp
+        if 'do_fiducial_warp' not in self.parameters:
+            self.parameters['do_fiducial_warp'] = True
 
     def fragment_count(self):
         return len(self.dataSet.get_fovs())
@@ -195,13 +199,21 @@ class FiducialCorrelationWarp(Warp):
     def _run_analysis(self, fragmentIndex: int):
         # TODO - this can be more efficient since some images should
         # use the same alignment if they are from the same imaging round
-        fixedImage = self._filter(
-            self.dataSet.get_fiducial_image(0, fragmentIndex))
-        offsets = [feature.register_translation(
-            fixedImage,
-            self._filter(self.dataSet.get_fiducial_image(x, fragmentIndex)),
-            100)[0] for x in
-                   self.dataSet.get_data_organization().get_data_channels()]
-        transformations = [transform.SimilarityTransform(
-            translation=[-x[1], -x[0]]) for x in offsets]
-        self._process_transformations(transformations, fragmentIndex)
+        
+        if self.parameters['do_fiducial_warp'] == True:
+            fixedImage = self._filter(
+                self.dataSet.get_fiducial_image(0, fragmentIndex))
+            offsets = [feature.register_translation(
+                fixedImage,
+                self._filter(self.dataSet.get_fiducial_image(x, fragmentIndex)),
+                100)[0] for x in
+                       self.dataSet.get_data_organization().get_data_channels()]
+            transformations = [transform.SimilarityTransform(
+                translation=[-x[1], -x[0]]) for x in offsets]
+            self._process_transformations(transformations, fragmentIndex)
+            
+        else:
+            transformations = [transform.SimilarityTransform(
+                translation=[0, 0]) for x in
+                    self.dataSet.get_data_organization().get_data_channels()]
+            self._process_transformations(transformations, fragmentIndex)
