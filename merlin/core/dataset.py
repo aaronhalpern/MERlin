@@ -863,9 +863,12 @@ class DataSet(object):
 
 class ImageDataSet(DataSet):
 
-    def __init__(self, dataDirectoryName: str, dataHome: str = None,
+    def __init__(self, 
+                 dataDirectoryName: str,
+                 dataHome: str = None,
                  analysisHome: str = None,
-                 microscopeParametersName: str = None):
+                 microscopeParametersName: str = None,
+                 piezoParametersName: str = None):
         """Create a dataset for the specified raw data.
 
         Args:
@@ -888,6 +891,12 @@ class ImageDataSet(DataSet):
             self._import_microscope_parameters(microscopeParametersName)
     
         self._load_microscope_parameters()
+        
+        # piezo parameters for 3D
+        if piezoParametersName is not None:
+            self._import_piezo_parameters(piezoParametersName)
+        self._load_piezo_parameters()
+        
 
     def get_image_file_names(self):
         return sorted(self.rawDataPortal.list_files(
@@ -923,7 +932,7 @@ class ImageDataSet(DataSet):
         destPath = os.sep.join(
                 [self.analysisPath, 'microscope_parameters.json'])
 
-        shutil.copyfile(sourcePath, destPath) 
+        shutil.copyfile(sourcePath, destPath)
 
     def _load_microscope_parameters(self): 
         path = os.sep.join(
@@ -944,6 +953,32 @@ class ImageDataSet(DataSet):
                 'microns_per_pixel', 0.108)
         self.imageDimensions = self.microscopeParameters.get(
                 'image_dimensions', [2048, 2048])
+            
+    # piezo params for 3d merfish
+    def _import_piezo_parameters(self, piezoParametersName):
+        sourcePath = os.sep.join([merlin.MICROSCOPE_PARAMETERS_HOME,
+                piezoParametersName])
+        destPath = os.sep.join(
+                [self.analysisPath, 'piezo_parameters.json'])
+
+        shutil.copyfile(sourcePath, destPath)
+
+    def _load_piezo_parameters(self):
+        path = os.sep.join(
+                [self.analysisPath, 'piezo_parameters.json'])
+        
+        if os.path.exists(path):
+            with open(path) as inputFile:
+                self.piezoParameters = json.load(inputFile)
+        else:
+            self.piezoParameters = {}
+        
+        # these are the polynomial correction coefficients
+        # they can be any order load them into np.polyval
+        self.piezo_yshift_coeffs = self.piezoParameters.get(
+            'y_shift', [0])
+        self.piezo_xshift_coeffs = self.piezoParameters.get(
+            'x_shift', [0])
 
     def get_microns_per_pixel(self):
         """Get the conversion factor to convert pixels to microns."""
@@ -969,13 +1004,32 @@ class ImageDataSet(DataSet):
             imagePath).get_sibling_with_extension('.xml')
         return xmltodict.parse(filePortal.read_as_text())
 
+    # for 3D merfish
+    def get_image_off_metadata(self, imagePath: str) -> Dict:
+        """ Get the off metadata stored for the specified image.
+
+        Args:
+            imagePath: the path to the image file (.dax or .tif)
+        Returns: the metadata from the associated off file
+        """
+        filePortal = self.rawDataPortal.open_file(
+            imagePath).get_sibling_with_extension('.off')
+        lines = filePortal.read_as_text().strip().split('\n')
+        columns = lines[0].strip().split(' ')
+        data = [line.strip().split(' ') for line in lines[1:]]
+        return pandas.DataFrame(data, columns = columns, dtype = float)
 
 class MERFISHDataSet(ImageDataSet):
 
-    def __init__(self, dataDirectoryName: str, codebookNames: List[str] = None,
-                 dataOrganizationName: str = None, positionFileName: str = None,
-                 dataHome: str = None, analysisHome: str = None,
-                 microscopeParametersName: str = None):
+    def __init__(self, 
+                 dataDirectoryName: str,
+                 codebookNames: List[str] = None,
+                 dataOrganizationName: str = None,
+                 positionFileName: str = None,
+                 dataHome: str = None,
+                 analysisHome: str = None,
+                 microscopeParametersName: str = None,
+                 piezoParametersName: str = None):
         """Create a MERFISH dataset for the specified raw data.
 
         Args:
@@ -1000,9 +1054,11 @@ class MERFISHDataSet(ImageDataSet):
             microscopeParametersName: the name of the microscope parameters
                     file that specifies properties of the microscope used
                     to acquire the images represented by this ImageDataSet
+            PiezoParametersName: the name of the piezo parameters
+                    file that specifies the correction to z scanning
         """
         super().__init__(dataDirectoryName, dataHome, analysisHome,
-                         microscopeParametersName)
+                         microscopeParametersName, piezoParametersName)
 
         self.dataOrganization = dataorganization.DataOrganization(
                 self, dataOrganizationName)
@@ -1177,6 +1233,15 @@ class MERFISHDataSet(ImageDataSet):
                 self.dataOrganization.get_fiducial_filename(dataChannel, fov),
                 self.dataOrganization.get_fiducial_frame_index(dataChannel))
 
+    ### added for 3D MERFISH 
+    def get_raw_image_zstage_positions(self, dataChannel, fov):
+        return self.get_image_off_metadata(
+            self.dataOrganization.get_image_filename(dataChannel, fov))['stage-z']    
+    
+    def get_fiducial_image_zstage_positions(self, dataChannel, fov):
+        return self.get_image_off_metadata(
+            self.dataOrganization.get_fiducial_filename(dataChannel, fov))['stage-z']
+
     def get_fiducial3D_base_image(self, dataChannel, fov):
         return self.load_image(
             self.dataOrganization.get_fiducial3D_filename(dataChannel, fov),
@@ -1187,6 +1252,7 @@ class MERFISHDataSet(ImageDataSet):
             self.load_image(
             self.dataOrganization.get_fiducial3D_filename(dataChannel, fov),
             i) for i in self.dataOrganization.get_fiducial3D_stack_frame_indices(dataChannel)])
+    ###
 
     def _import_positions_from_metadata(self):
         positionData = []
