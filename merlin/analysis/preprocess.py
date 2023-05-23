@@ -9,6 +9,11 @@ from merlin.util import imagefilters
 from merlin.data import codebook
 
 
+try:
+    from csbdeep.models import CARE
+except:
+    print('check csbd module')
+
 class Preprocess(analysistask.ParallelAnalysisTask):
 
     """
@@ -36,6 +41,120 @@ class Preprocess(analysistask.ParallelAnalysisTask):
         self.dataSet.save_numpy_analysis_result(
             histogram, 'pixel_histogram', self.analysisName, fov, 'histograms')
 
+class CAREPreprocess(Preprocess):
+    def __init__(self, dataSet, parameters=None, analysisName=None):
+            super().__init__(dataSet, parameters, analysisName)
+
+            if 'codebook_index' not in self.parameters:
+                self.parameters['codebook_index'] = 0
+
+            if 'write_preprocessed_images' not in self.parameters:
+                self.parameters['write_preprocessed_images'] = False
+
+            self.warpTask = self.dataSet.load_analysis_task(
+                self.parameters['warp_task'])
+            
+            # is this a smart way to bring in the model?
+            self.model = CARE(config=None,
+                         name='denoising_model',
+                         basedir= self.dataSet.analysisPath)
+
+    def fragment_count(self):
+        return len(self.dataSet.get_fovs())
+
+    def get_estimated_memory(self):
+        return 4096
+
+    def get_estimated_time(self):
+        return 5
+
+    def get_dependencies(self):
+        return [self.parameters['warp_task']]
+
+    def get_codebook(self) -> codebook.Codebook:
+        return self.dataSet.get_codebook(self.parameters['codebook_index'])
+
+    def get_processed_image_set(
+            self, fov, zIndex: int = None,
+            chromaticCorrector: aberration.ChromaticCorrector = None
+    ) -> np.ndarray:
+        if zIndex is None:
+            return np.array([[self.get_processed_image(
+                fov, self.dataSet.get_data_organization()
+                    .get_data_channel_for_bit(b), zIndex, chromaticCorrector)
+                for zIndex in range(len(self.dataSet.get_z_positions()))]
+                for b in self.get_codebook().get_bit_names()])
+        else:
+            return np.array([self.get_processed_image(
+                fov, self.dataSet.get_data_organization()
+                    .get_data_channel_for_bit(b), zIndex, chromaticCorrector)
+                    for b in self.get_codebook().get_bit_names()])
+
+    def get_processed_image(
+            self, fov: int, dataChannel: int, zIndex: int,
+            chromaticCorrector: aberration.ChromaticCorrector = None
+    ) -> np.ndarray:
+        inputImage = self.warpTask.get_aligned_image(fov, dataChannel, zIndex,
+                                                    chromaticCorrector)
+        return self._preprocess_image(inputImage)
+    
+    def _preprocess_image(self, inputImage: np.ndarray) -> np.ndarray:
+        return self.model.predict(inputImage, 'YX')
+    
+    def _run_analysis(self, fragmentIndex):
+        warpTask = self.dataSet.load_analysis_task(
+                self.parameters['warp_task'])
+
+        histogramBins = np.arange(0, np.iinfo(np.uint16).max, 1)
+        pixelHistogram = np.zeros(
+                (self.get_codebook().get_bit_count(), len(histogramBins)-1))
+
+        # this currently only is to calculate the pixel histograms in order
+        # to estimate the initial scale factors. This is likely unnecessary
+
+        with self.dataSet.writer_for_analysis_images(
+                 self.analysisName, 'preprocessed_images', fragmentIndex) as outputTif:
+
+            for bi, b in enumerate(self.get_codebook().get_bit_names()):
+                dataChannel = self.dataSet.get_data_organization()\
+                        .get_data_channel_for_bit(b)
+                for i in range(len(self.dataSet.get_z_positions())):
+                    inputImage = warpTask.get_aligned_image(
+                            fragmentIndex, dataChannel, i)
+                    outputImage = self._preprocess_image(inputImage)
+
+                    pixelHistogram[bi, :] += np.histogram(
+                            outputImage, bins=histogramBins)[0]
+                    
+                    # save data?
+                    if self.parameters['write_preprocessed_images']:
+                        outputTif.save(outputImage,photometric='MINISBLACK')
+
+        self._save_pixel_histogram(pixelHistogram, fragmentIndex)
+
+        """
+        # want to visualize the data?
+        if self.parameters['write_preprocessed_images']:
+            zPositions = self.dataSet.get_z_positions()
+
+            #imageDescription = self.dataSet.analysis_tiff_description(
+            #        len(zPositions), len(dataChannels))
+
+            with self.dataSet.writer_for_analysis_images(
+                    self, 'preprocessed_images', fragmentIndex) as outputTif:
+                        
+                        for b in self.get_codebook().get_bit_names():
+                            for zIndex in range(len(self.dataSet.get_z_positions())):
+                                processed_image = self.get_processed_image(
+                                    fragmentIndex, 
+                                    self.dataSet.get_data_organization().get_data_channel_for_bit(b), 
+                                    zIndex)
+
+                                outputTif.save(
+                                        processed_image,
+                                        photometric='MINISBLACK')
+                                        #metadata=imageDescription)
+        """
 
 class DeconvolutionPreprocess(Preprocess):
 

@@ -868,7 +868,8 @@ class ImageDataSet(DataSet):
                  dataHome: str = None,
                  analysisHome: str = None,
                  microscopeParametersName: str = None,
-                 piezoParametersName: str = None):
+                 piezoParametersName: str = None,
+                 denoisingHome: str = None):
         """Create a dataset for the specified raw data.
 
         Args:
@@ -889,7 +890,6 @@ class ImageDataSet(DataSet):
 
         if microscopeParametersName is not None:
             self._import_microscope_parameters(microscopeParametersName)
-    
         self._load_microscope_parameters()
         
         # piezo parameters for 3D
@@ -897,6 +897,11 @@ class ImageDataSet(DataSet):
             self._import_piezo_parameters(piezoParametersName)
         self._load_piezo_parameters()
         
+        # denoising model 
+        if denoisingHome is not None:
+            self._import_denoising_model(denoisingHome)
+        # do something here - load in the model or wait until later?
+        #### TO DO 
 
     def get_image_file_names(self):
         return sorted(self.rawDataPortal.list_files(
@@ -959,26 +964,36 @@ class ImageDataSet(DataSet):
         sourcePath = os.sep.join([merlin.MICROSCOPE_PARAMETERS_HOME,
                 piezoParametersName])
         destPath = os.sep.join(
-                [self.analysisPath, 'piezo_parameters.json'])
+                [self.analysisPath, 'piezo_parameters.pkl'])
 
         shutil.copyfile(sourcePath, destPath)
 
     def _load_piezo_parameters(self):
         path = os.sep.join(
-                [self.analysisPath, 'piezo_parameters.json'])
+                [self.analysisPath, 'piezo_parameters.pkl'])
         
         if os.path.exists(path):
-            with open(path) as inputFile:
-                self.piezoParameters = json.load(inputFile)
+            with open(path, 'rb') as inputFile:
+                self.piezoParameters = pickle.load(inputFile)
         else:
             self.piezoParameters = {}
         
-        # these are the polynomial correction coefficients
-        # they can be any order load them into np.polyval
-        self.piezo_yshift_coeffs = self.piezoParameters.get(
-            'y_shift', [0])
-        self.piezo_xshift_coeffs = self.piezoParameters.get(
-            'x_shift', [0])
+        # these pickled interpolation functions in 2D
+        # inputs are in HAL terms z_offset, piezo stage-z
+        # or in Merlin terms z position, true piezo position from .off file 
+        self.piezo_yshift_function = self.piezoParameters.get(
+            'yshift', None)
+        self.piezo_xshift_function = self.piezoParameters.get(
+            'xshift', None)
+        
+    # denoising for 3d merfish
+    def _import_denoising_model(self, denoisingHome):
+        sourcePath = os.sep.join([merlin.DENOISING_HOME,
+                denoisingHome])
+        destPath = os.sep.join(
+                [self.analysisPath, 'denoising_model'])
+        if not os.path.exists(destPath):
+            shutil.copytree(sourcePath, destPath)
 
     def get_microns_per_pixel(self):
         """Get the conversion factor to convert pixels to microns."""
@@ -1005,19 +1020,22 @@ class ImageDataSet(DataSet):
         return xmltodict.parse(filePortal.read_as_text())
 
     # for 3D merfish
-    def get_image_off_metadata(self, imagePath: str) -> Dict:
+    def get_image_stagez_from_off(self, imagePath: str) -> Dict:
         """ Get the off metadata stored for the specified image.
-
+            Currently HAL only records the offset at z position = 0
+            This value is repeated down the column
         Args:
             imagePath: the path to the image file (.dax or .tif)
-        Returns: the metadata from the associated off file
+        Returns: stage-z value of the .off file 
         """
         filePortal = self.rawDataPortal.open_file(
             imagePath).get_sibling_with_extension('.off')
         lines = filePortal.read_as_text().strip().split('\n')
         columns = lines[0].strip().split(' ')
         data = [line.strip().split(' ') for line in lines[1:]]
-        return pandas.DataFrame(data, columns = columns, dtype = float)
+        return pandas.DataFrame(data,
+                                columns = columns, 
+                                dtype = float)['stage-z'][0] 
 
 class MERFISHDataSet(ImageDataSet):
 
@@ -1029,7 +1047,8 @@ class MERFISHDataSet(ImageDataSet):
                  dataHome: str = None,
                  analysisHome: str = None,
                  microscopeParametersName: str = None,
-                 piezoParametersName: str = None):
+                 piezoParametersName: str = None,
+                 denoisingHome: str = None):
         """Create a MERFISH dataset for the specified raw data.
 
         Args:
@@ -1056,9 +1075,15 @@ class MERFISHDataSet(ImageDataSet):
                     to acquire the images represented by this ImageDataSet
             PiezoParametersName: the name of the piezo parameters
                     file that specifies the correction to z scanning
+            DenoisingHome: the name of the directory that holds the 
+                    denoising model
         """
-        super().__init__(dataDirectoryName, dataHome, analysisHome,
-                         microscopeParametersName, piezoParametersName)
+        super().__init__(dataDirectoryName,
+                         dataHome, 
+                         analysisHome,
+                         microscopeParametersName,
+                         piezoParametersName,
+                         denoisingHome)
 
         self.dataOrganization = dataorganization.DataOrganization(
                 self, dataOrganizationName)
@@ -1233,19 +1258,22 @@ class MERFISHDataSet(ImageDataSet):
                 self.dataOrganization.get_fiducial_filename(dataChannel, fov),
                 self.dataOrganization.get_fiducial_frame_index(dataChannel))
 
-    ### added for 3D MERFISH 
+    ### added for 3D MERFISH
+    #  returns the absolute value of the piezo
     def get_raw_image_zstage_positions(self, dataChannel, fov):
-        return self.get_image_off_metadata(
-            self.dataOrganization.get_image_filename(dataChannel, fov))['stage-z']    
-    
-    def get_fiducial_image_zstage_positions(self, dataChannel, fov):
-        return self.get_image_off_metadata(
-            self.dataOrganization.get_fiducial_filename(dataChannel, fov))['stage-z']
+        off_init = self.get_image_stagez_from_off(
+            self.dataOrganization.get_image_filename(dataChannel, fov))
+        zoffsets = off_init + np.array(self.get_z_positions())
+        return zoffsets
 
-    def get_fiducial3D_base_image(self, dataChannel, fov):
-        return self.load_image(
-            self.dataOrganization.get_fiducial3D_filename(dataChannel, fov),
-            self.dataOrganization.get_fiducial3D_base_frame_index(dataChannel))
+    #  returns the absolute value of the piezo for the fiducial frame
+    def get_fiducial_image_zstage_positions(self, dataChannel, fov):
+        off_init = self.get_image_stagez_from_off(
+            self.dataOrganization.get_fiducial_filename(dataChannel, fov))
+        zoffsets = off_init + np.array(
+            self.dataOrganization.get_fiducial3D_stack_frame_zPos(
+                dataChannel))
+        return zoffsets
 
     def get_fiducial3D_stack(self, dataChannel, fov):
         return np.array([

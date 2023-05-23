@@ -203,17 +203,6 @@ class DataOrganization(object):
         imagingRound = \
             self.data.loc[dataChannel, 'fiducial3DImagingRound']
         return self._get_image_path(imageType, fov, imagingRound)
-
-    def get_fiducial3D_base_frame_index(self, dataChannel: int) -> int:
-        """Get the index of the frame containing the 3D fiducial image
-        for the specified data channel.
-
-        Args:
-            dataChannel: index of the data channel
-        Returns:
-            The index of the base frame in the 3D stack
-        """
-        return self.data.iloc[dataChannel]['fiducial3DBaseFrame']
         
     def get_fiducial3D_stack_frame_indices(self, dataChannel: int) -> List[int]:
         """Get the indices of the frames containing the 3D fiducial image stack

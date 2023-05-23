@@ -36,10 +36,13 @@ def build_parser():
                         help='name of the codebook to use')
     parser.add_argument('-m', '--microscope-parameters',
                         help='name of the microscope parameters to use')
-    # 3D merfish                    
+    ### 3D merfish                    
     parser.add_argument('-z', '--piezo-parameters',
                         help='name of the piezo parameters to use')
-                        
+    parser.add_argument('-d', '--denoising',
+                        help='name of denoising model directory')
+    ###                  
+
     parser.add_argument('-p', '--positions',
                         help='name of the position file to use')
     parser.add_argument('-n', '--core-count', type=int,
@@ -122,7 +125,9 @@ def merlin():
                 [m.PARAMETERS_HOME, 'microscope'])
         m.FPKM_HOME = os.sep.join([m.PARAMETERS_HOME, 'fpkm'])
         m.SNAKEMAKE_PARAMETERS_HOME = os.sep.join(
-            [m.PARAMETERS_HOME, 'snakemake'])
+                [m.PARAMETERS_HOME, 'snakemake'])
+        m.DENOISING_HOME = os.sep.join(
+                [m.PARAMETERS_HOME, 'denoising'])
 
     dataSet = dataset.MERFISHDataSet(
         args.dataset,
@@ -132,7 +137,8 @@ def merlin():
         positionFileName=_clean_string_arg(args.positions),
         dataHome=_clean_string_arg(args.data_home),
         analysisHome=_clean_string_arg(args.analysis_home),
-        piezoParametersName = _clean_string_arg(args.piezo_parameters)
+        piezoParametersName = _clean_string_arg(args.piezo_parameters),
+        denoisingHome = _clean_string_arg(args.denoising)
     )
     
     parametersHome = m.ANALYSIS_PARAMETERS_HOME
@@ -191,7 +197,7 @@ def run_with_snakemake(
                         stats=snakefilePath + '.stats', lock=False,
                         **snakemakeParameters)
 
-    if report:
+    if False:
         reportTime = int(time.time())
         try:
             with open(snakefilePath + '.stats', 'r') as f:

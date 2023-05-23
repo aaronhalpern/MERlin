@@ -1,6 +1,8 @@
 from typing import List
 from typing import Union
 import numpy as np
+import pandas as pd
+import time
 from skimage import registration
 from skimage import transform
 from skimage import feature
@@ -213,13 +215,18 @@ class FiducialCorrelationWarp3D(FiducialCorrelationWarp):
     """
     An analysis task that warps a set of images taken in different imaging
     rounds based on the crosscorrelation between fiducial images.
+    
+    
+    General plan - there are three corrections applied
+    The first correction is that every stack is corrected for the piezo induced drift
+        This uses a calibration of the z-stage position from the .off file
+    The second correction is the XY registration from the fiducial bead frame
+    The third correction is using an XYZ registration of the fiducial3D bead stacks
+    
     """
 
     def __init__(self, dataSet, parameters=None, analysisName=None):
         super().__init__(dataSet, parameters, analysisName)
-
-        if 'zstage_reference_position' not in self.parameters:
-            self.parameters['zstage_reference_position'] = 50 # 50 um starting zstage position
 
     def fragment_count(self):
         return len(self.dataSet.get_fovs())
@@ -229,133 +236,133 @@ class FiducialCorrelationWarp3D(FiducialCorrelationWarp):
 
     def get_estimated_time(self):
         return 5
+        
+    def get_piezo_corrected_frame(self,
+                                fov: int,
+                                dataChannel: int,
+                                zIndex: int,
+                                chromaticCorrector: aberration.ChromaticCorrector=None
+                                ) -> np.ndarray:
+        """Get the specified image corrected for piezo drift in XY
+        Args:
+            fov: index of the field of view
+            dataChannel: index of the data channel
+            zIndex: index of the z position
+        Returns:
+            a 2-dimensional numpy array containing the specified image
+        """
+        
+        inputImage = self.dataSet.get_raw_image(dataChannel, fov, self.dataSet.z_index_to_position(zIndex))
+        inputImage_zstage_position = self.dataSet.get_raw_image_zstage_positions(dataChannel, fov)[zIndex]
+
+        #### make sure this is correct
+        # these are the interpolation functions - note the negative sign
+        x_correction = -self.dataSet.piezo_xshift_function(self.dataSet.z_index_to_position(zIndex),
+                                                           inputImage_zstage_position)
+        y_correction = -self.dataSet.piezo_yshift_function(self.dataSet.z_index_to_position(zIndex),
+                                                           inputImage_zstage_position)
+
+        transformation = transform.SimilarityTransform(translation=[x_correction, y_correction])
+        
+        return transform.warp(inputImage, transformation, 
+            preserve_range=True).astype(inputImage.dtype)                         
 
     def get_piezo_corrected_fiducial3D_stack(self, dataChannel, fragmentIndex):
+        # this will return a piezo corrected stack of the fiducial3D image 
+        # the assumption here is that the first frame index is the beads on the coverglass surface
         
         stack = self.dataSet.get_fiducial3D_stack(dataChannel, fragmentIndex)
-        stack_indices = self.dataSet.get_data_organization().get_fiducial3D_stack_frame_indices(dataChannel)
-        
-        zstage_positions_all = self.dataSet.get_fiducial_image_zstage_positions(dataChannel, fragmentIndex)
-        zstage_positions_stack = zstage_positions_all[stack_indices]
-        zstage_position_ref = zstage_positions_all[self.dataSet.get_data_organization().get_fiducial3D_base_frame_index(0)]
 
-        x_correction = -np.polyval(self.dataSet.piezo_xshift_coeffs, zstage_positions) + np.polyval(self.dataSet.piezo_xshift_coeffs, zstage_position_ref)
-        y_correction = -np.polyval(self.dataSet.piezo_yshift_coeffs, zstage_positions) + np.polyval(self.dataSet.piezo_yshift_coeffs, zstage_position_ref)
+
+        stack_zpositions = self.dataSet.get_data_organization().get_fiducial3D_stack_frame_zPos(
+                                                            dataChannel)
+        stack_zstage_positions = self.dataSet.get_fiducial_image_zstage_positions(dataChannel, 
+                                                            fragmentIndex)
+
+        x_correction = -self.dataSet.piezo_xshift_function(stack_zpositions,
+                                                           stack_zstage_positions)
+        y_correction = -self.dataSet.piezo_yshift_function(stack_zpositions,
+                                                           stack_zstage_positions)
 
         transforms = [transform.SimilarityTransform(translation=[x, y]) for x,y in zip(x_correction,y_correction)]
         
         for i in range(len(stack)):
-            stack[i] = transform.warp(stack[i], transformation, preserve_range=True).astype(stack.dtype)
+            stack[i] = transform.warp(stack[i], transforms[i], preserve_range=True).astype(stack.dtype)
         
         return stack
-        
-    def get_piezo_corrected_fiducial3D_base_image(self, dataChannel, fragmentIndex):
-        
-        stack = self.dataSet.get_fiducial3D_stack(dataChannel, fragmentIndex)
-        stack_indices = self.dataSet.get_data_organization().get_fiducial3D_stack_frame_indices(dataChannel)
-        
-        zstage_positions_all = self.dataSet.get_fiducial_image_zstage_positions(dataChannel, fragmentIndex)
-        zstage_positions_stack = zstage_positions_all[stack_indices]
-        zstage_position_ref = zstage_positions_all[self.dataSet.get_data_organization().get_fiducial3D_base_frame_index(0)]
-
-        x_correction = -np.polyval(self.dataSet.piezo_xshift_coeffs, zstage_positions) + np.polyval(self.dataSet.piezo_xshift_coeffs, zstage_position_ref)
-        y_correction = -np.polyval(self.dataSet.piezo_yshift_coeffs, zstage_positions) + np.polyval(self.dataSet.piezo_yshift_coeffs, zstage_position_ref)
-
-        transforms = [transform.SimilarityTransform(translation=[x, y]) for x,y in zip(x_correction,y_correction)]
-        
-        for i in range(len(stack)):
-            stack[i] = transform.warp(stack[i], transformation, preserve_range=True).astype(stack.dtype)
-        
-        return stack
-
-base = self.dataSet.get_fiducial3D_base_image(dataChannel, fragmentIndex)
-base_index = self.dataSet.get_data_organization().get_fiducial3D_base_frame_index(dataChannel)
-
-
+    
+    # this is standard MERFISH registration
+    # should not need to correct this for piezo since we correct to the fiducial frame postion anyways
     def _find_2D_offsets(self, fragmentIndex: int):
-        # this is standard MERFISH registration
+        
         fixedImage = self._filter(
                 self.dataSet.get_fiducial_image(0, fragmentIndex))
-              
+        
+        # phase cross cor returns Y X shifts
         offsets = [registration.phase_cross_correlation(
             fixedImage,
             self._filter(self.dataSet.get_fiducial_image(x, fragmentIndex)),
             upsample_factor = 100)[0] for x in
                    self.dataSet.get_data_organization().get_data_channels()]
-                   
-        #transformations = [transform.SimilarityTransform(
-        #    translation=[-x[1], -x[0]]) for x in offsets]
         
-        # saved as X Y
-        transformations = [[-x[1], -x[0]] for x in offsets]
-        return transformations
+        # should be Y X order
+        offsets2D = [[x[0], x[1]] for x in offsets]
+        return offsets2D
     
-    def _find_2D_base_offsets_from_3D_stacks(self, fragmentIndex: int):
+    def _find_offsets_from_3D_stacks(self, fragmentIndex: int):
         # this is for registration of a bead stack at the top of a 3D tissue
         # first register the zero plane
-        fixedImage = self._filter(
-                self.dataSet.get_fiducial3D_base_image(0, fragmentIndex))
-              
-        offsets = [registration.phase_cross_correlation(
-            fixedImage,
-            self._filter(self.dataSet.get_fiducial3D_base_image(x, fragmentIndex)),
-            upsample_factor = 100)[0] for x in
-                   self.dataSet.get_data_organization().get_data_channels()]
-                   
-        #transformations = [transform.SimilarityTransform(
-        #    translation=[-x[1], -x[0], 0], dimensionality = 3) \
-        #        for x in offsets]
+        fixedImage = self.get_piezo_corrected_fiducial3D_stack(0, fragmentIndex)
         
-        # saved as X, Y
-        transformations = [[-x[1], -x[0], 0] for x in offsets]
+        offsets3D_base = []
+        offsets3D = []
         
-        return transformations
-    
-    def _find_3D_offsets_from_3D_stacks(self, fragmentIndex: int):
-        # this is for registration of a bead stack at the top of a 3D tissue
-        # first register the zero plane
-        fixedImage = self.dataSet.get_fiducial3D_stack(0, fragmentIndex)
-        offsets = [registration.phase_cross_correlation(fixedImage,
-            self.dataSet.get_fiducial3D_stack(x, fragmentIndex),
-            upsample_factor = 100)[0] for x in
-            self.dataSet.get_data_organization().get_data_channels()]
-
-        # will need skimage > 0.17 for XYZ similarity transform
-        # given by translation = x, y, z
-        #transformations = [transform.SimilarityTransform(
-        #    translation=[-x[2], -x[1], -x[0]], dimensionality = 3 ) for x in offsets]
-        
-        # saved as X, Y, Z
-        transformations = [[-x[2], -x[1], -x[0]] for x in offsets]
-        return transformations
-
-    def _find_piezo_correction(self, fragmentIndex: int):
-        # something something something
-        pass
-
-
-    def _save_transformations(self, transformationList: List, fov: int, name: str) -> None:
-        self.dataSet.save_numpy_analysis_result(
-            np.array(transformationList), name,
-            self.get_analysis_name(), resultIndex=fov,
-            subdirectory='transformations')
+        for dataChannel in self.dataSet.get_data_organization().get_data_channels():
+            movingImage = self.get_piezo_corrected_fiducial3D_stack(dataChannel, fragmentIndex)
             
+            # 2D base offset this should be Y X
+            offsets3D_base.append(registration.phase_cross_correlation(fixedImage[0], movingImage[0], upsample_factor = 100)[0])
+            # 3D offsets.. this should be Z Y X
+            offsets3D.append(registration.phase_cross_correlation(fixedImage[1:], movingImage[1:], upsample_factor = 100)[0])
+            
+        return offsets3D_base, offsets3D
 
-    def _run_analysis(self, fragmentIndex: int):
-        transforms_2D = self._find_2D_offsets(fragmentIndex)
-        self._save_transformations(transforms_2D, fragmentIndex, 'offsets2D')
+    def _save_transformation_dataFrame(self, offsets2D, offsets3D_base, offsets3D, fragmentIndex: int):
+        df = pd.DataFrame(columns = ['dataChannel','zPos','zPos_new','xshift','yshift'])
+        dataChannels = self.dataSet.get_data_organization().get_data_channels()
+        zPos_orig = self.dataSet.get_data_organization().get_z_positions()
+        # assume all fiducial zpos are the same across channels
+        fiducial3D_zpos = self.dataSet.get_data_organization().get_fiducial3D_stack_frame_zPos(0) 
+        fiducial3D_zpos_center = np.mean(fiducial3D_zpos[1:]) # first frame is assumed to be zero
+
+        # zip datachannel, 2d offsets, 3d base offsets, 3d stack offsets
+        for dc, (off2D_y, off2D_x), (off3Db_y,off3Db_x), (off3D_z, off3D_y, off3D_x) in zip(dataChannels, offsets2D, offsets3D_base, offsets3D):
+            df_temp = pd.DataFrame(columns = ['dataChannel','zPos','zPos_new','xshift','yshift'])
+            # these are the 2d shift and a z-dependant shift from the 3d registration
+            # make negative since we are shifting the fixed image
+
+            #                   2d          3d - 3d base    * some percentage of the height
+            df_temp['yshift'] = -off2D_y - (off3D_y-off3Db_y)*np.array(zPos_orig)/fiducial3D_zpos_center
+            df_temp['xshift'] = -off2D_x - (off3D_x-off3Db_x)*np.array(zPos_orig)/fiducial3D_zpos_center
+            df_temp['zPos'] = zPos_orig # original z pos just so its in the df
+            # new zpos. shift is the direction to move the moving image
+            # if zshift is negative, the moving image has expanded 
+            # so our new zpos should be larger hence the negative below to make the ratio larger
+            df_temp['zPos_new'] = np.array(zPos_orig) * (fiducial3D_zpos_center - off3D_z)/fiducial3D_zpos_center
+            # include the datachannel
+            df_temp['dataChannel'] = dc
+            # include raw z shift for troubleshooting purposes
+            df_temp['zshift'] = off3D_z
+
+            df = pd.concat([df, df_temp], ignore_index=True)
         
-        transforms_3D_base = self._find_2D_base_offsets_from_3D_stacks(fragmentIndex)
-        self._save_transformations(transforms_3D_base, fragmentIndex, 'offsets3D_base')
-        
-        transforms_3D = self._find_3D_offsets_from_3D_stacks(fragmentIndex)
-        self._save_transformations(transforms_3D, fragmentIndex, 'offsets3D')
-        
-        self._process_transformations(fragmentIndex)
+        self.dataSet.save_dataframe_to_csv(df,
+                                           'transformation_table',
+                                           self.get_analysis_name(),
+                                           resultIndex=fragmentIndex,
+                                           subdirectory='transformations')                   
     
-    def get_transformation(self, fov: int, dataChannel: int=None
-                            ) -> Union[transform.EuclideanTransform,
-                                 List[transform.EuclideanTransform]]:
+    def get_transformation_table(self, fov: int) -> pd.DataFrame:
         """Get the transformations for aligning images for the specified field
         of view.
 
@@ -368,69 +375,10 @@ base_index = self.dataSet.get_data_organization().get_fiducial3D_base_frame_inde
                 EuclideanTransforms for all dataChannels if dataChannel is
                 not specified.
         """
-        transformation_2D = self.dataSet.load_numpy_analysis_result(
-            'offsets2D', self, resultIndex=fov, subdirectory='transformations')
+        transformation_table = self.dataSet.load_dataframe_from_csv(
+            'transformation_table', self, resultIndex=fov, subdirectory='transformations')
             
-        if dataChannel is not None:
-            return transformation_2D[dataChannel]
-        else:
-            return transformation_2D
-
-    def index_to_corrected_zPos(self, fov: int, dataChannel: int, zIndex: int) -> float:
-        fiducial3D_zpos_mean = np.mean(self.dataSet.get_data_organization().get_fiducial3D_stack_frame_zPos(dataChannel))
-   
-        transformation_3D_zshift = self.dataSet.load_numpy_analysis_result(
-            'offsets3D', self, resultIndex=fov, subdirectory='transformations')[dataChannel, 2]
-        
-        # zPos we want to get
-        zPos = self.dataSet.z_index_to_position(zIndex)
-        
-        # zPos accounting for 3D registration
-        # assumption here is that the base frame is at z = 0
-        zPos_new = zPos * (fiducial3D_zpos_mean + transformation_3D_zshift)/fiducial3D_zpos_mean
-        
-        return zPos_new
-    
-    def index_to_corrected_zPos_image(self, fov: int, dataChannel: int, zIndex: int) -> np.ndarray:
-    
-        zPos_new = self.index_to_corrected_zPos(fov, dataChannel, zIndex)
-        
-        zPos_all = self.dataSet.get_z_positions()
-        
-        if zPos_new > np.amax(zPos_all):
-            zPos_new = np.amax(zPos_all)
-        
-        # interpolate the two nearest frames
-        zPos_nearest = zPos_all[np.abs(zPos_all - zPos_new).argsort()[0:2]] # take two nearest zpos
-        zPos_nearest_distances = np.abs(zPos_new - zPos_nearest) # find distance
-        weights = 1 - zPos_nearest_distances/np.sum(zPos_nearest_distance) # get weighting factor
-        
-        images_nearest = [self.dataSet.get_raw_image(dataChannel, fov, z) for z in zPos_nearest]
-        
-        return (images_nearest[0] * weights[0] + images_nearest[1] * weights[1]).astype(images_nearest[0]) # interpolated image
-        
-    def index_to_XY_correction_transform(self, fov: int, dataChannel: int, zIndex: int) -> np.ndarray:
-        
-        # fiducial plane
-        offsets2D = self.dataSet.load_numpy_analysis_result(
-            'offsets2D', self, resultIndex=fov, subdirectory='transformations')[dataChannel]
-
-        transformation_3D_base = self.dataSet.load_numpy_analysis_result(
-            'offsets3D_base', self, resultIndex=fov, subdirectory='transformations')[dataChannel] 
-    
-        transformation_3D = self.dataSet.load_numpy_analysis_result(
-            'offsets3D', self, resultIndex=fov, subdirectory='transformations')[dataChannel] 
-        
-        fiducial3D_zpos_mean = np.mean(self.dataSet.get_data_organization().get_fiducial3D_stack_frame_zPos(dataChannel))
-        
-        offsets_3D_slope = (transformation_3D - transformation_3D_base)/fiducial3D_zpos_mean
-        zPos_new = self.index_to_corrected_zPos(fov, dataChannel, zIndex)
-        
-        offsets_3D = offsets_3D_slope * zPos_new
-        
-        offsets = offsets2D + offsets3D
-        
-        return transform.SimilarityTransform(translation = offsets[0:2])
+        return transformation_table
 
     def get_aligned_image(
             self, fov: int, dataChannel: int, zIndex: int,
@@ -449,10 +397,35 @@ base_index = self.dataSet.get_data_organization().get_fiducial3D_base_frame_inde
         Returns:
             a 2-dimensional numpy array containing the specified image
         """
-
-        inputImage = self.dataSet.index_to_corrected_zPos_image(dataChannel, fov, zIndex)
-        transformation = self.index_to_XY_correction_transform(dataChannel, fov, zIndex)
+        df = self.get_transformation_table(fov)
+        zPos = self.dataSet.z_index_to_position(zIndex)
+        df = df[(df['dataChannel'] == dataChannel) & 
+                     (df['zPos'] == zPos)]
         
+        xshift = df['xshift'].values[0]
+        yshift = df['yshift'].values[0]
+        zPos_new = df['zPos_new'].values[0]
+
+        zPos_all = np.array(self.dataSet.get_z_positions())
+        
+        if zPos_new > np.amax(zPos_all):
+            zPos_new = np.amax(zPos_all)
+        
+        # interpolate the two nearest frames
+        zPos_nearest = zPos_all[np.abs(zPos_all - zPos_new).argsort()[0:2]] # take two nearest zpos
+        zPos_nearest_distances = np.abs(zPos_new - zPos_nearest) # find distance
+        weights = 1 - zPos_nearest_distances/np.sum(zPos_nearest_distances) # get weighting factor
+        
+        images_nearest = [self.dataSet.get_raw_image(dataChannel, fov, z) for z in zPos_nearest]
+        
+        # interpolated image
+        inputImage = (images_nearest[0] * weights[0] +
+                      images_nearest[1] * weights[1]).astype(
+                      images_nearest[0].dtype) 
+                      
+        transformation = transform.SimilarityTransform(
+            translation=[xshift, yshift])
+
         if chromaticCorrector is not None:
             imageColor = self.dataSet.get_data_organization()\
                             .get_data_channel_color(dataChannel)
@@ -463,7 +436,7 @@ base_index = self.dataSet.get_data_organization().get_fiducial3D_base_frame_inde
             return transform.warp(inputImage, transformation,
                                   preserve_range=True).astype(inputImage.dtype)
                                   
-        
+
     def _process_transformations(self, fov) -> None:
         """
         Process the transformations determined for a given fov. 
@@ -489,28 +462,49 @@ base_index = self.dataSet.get_data_organization().get_fiducial3D_base_frame_inde
                     self, 'aligned_images', fov) as outputTif:
                 for x in dataChannels:
                     for z in zPositions:
-                        transformedImage = self.get_aligned_image(fov, x, self.dataSet.position_to_z_index(z))
+                        #print('aligning channel {} zpos {}'.format(x, z))
+                        transformedImage = self.get_aligned_image(fov, x, 
+                                                self.dataSet.position_to_z_index(z))
                         outputTif.save(
                                 transformedImage,
                                 photometric='MINISBLACK',
                                 metadata=imageDescription)
 
+        # this should be unchanged from normal merlin
         if self.writeAlignedFiducialImages:
+
+            transformationList = self.get_transformation(fov)
 
             fiducialImageDescription = self.dataSet.analysis_tiff_description(
                     1, len(dataChannels))
-                    
-            transformation_2D = self.dataSet.load_numpy_analysis_result(
-                'offsets2D', self, resultIndex=fov, subdirectory='transformations')
 
             with self.dataSet.writer_for_analysis_images(
                     self, 'aligned_fiducial_images', fov) as outputTif:
-                for t, x in zip(transformation_2D, dataChannels):
+                for t, x in zip(transformationList, dataChannels):
                     inputImage = self.dataSet.get_fiducial_image(x, fov)
-                    transformation = transform.SimilarityTransform(translation = [t[0], t[1]])
-                    transformedImage = transform.warp(inputImage, transformation,
-                        preserve_range=True).astype(inputImage.dtype)
+                    transformedImage = transform.warp(
+                            inputImage, t, preserve_range=True) \
+                        .astype(inputImage.dtype)
                     outputTif.save(
                             transformedImage, 
                             photometric='MINISBLACK',
                             metadata=fiducialImageDescription)
+                    
+
+    def _run_analysis(self, fragmentIndex: int):
+        print('running 2d registration')
+        offsets2D = self._find_2D_offsets(fragmentIndex)
+
+        # just save the 2D transformation like normal merlin
+        transformations2D = [transform.SimilarityTransform(
+            translation=[-x[1], -x[0]]) for x in offsets2D]
+        
+        self._save_transformations(transformations2D, fragmentIndex)
+        
+        # now do 3D registration
+        print('running 3d registration')
+        offsets3D_base, offsets3D = self._find_offsets_from_3D_stacks(fragmentIndex)
+        
+        self._save_transformation_dataFrame(offsets2D, offsets3D_base, offsets3D, fragmentIndex)
+
+        self._process_transformations(fragmentIndex)
