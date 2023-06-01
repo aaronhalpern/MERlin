@@ -8,11 +8,12 @@ from merlin.util import aberration
 from merlin.util import imagefilters
 from merlin.data import codebook
 
+from csbdeep.models import CARE
 
-try:
-    from csbdeep.models import CARE
-except:
-    print('check csbd module')
+#try:
+#    from csbdeep.models import CARE
+#except:
+#    print('check csbd module')
 
 class Preprocess(analysistask.ParallelAnalysisTask):
 
@@ -47,17 +48,20 @@ class CAREPreprocess(Preprocess):
 
             if 'codebook_index' not in self.parameters:
                 self.parameters['codebook_index'] = 0
-
             if 'write_preprocessed_images' not in self.parameters:
                 self.parameters['write_preprocessed_images'] = False
+            if 'highpass_sigma' not in self.parameters:
+                self.parameters['highpass_sigma'] = 3
+            
+            self._highPassSigma = self.parameters['highpass_sigma']
 
             self.warpTask = self.dataSet.load_analysis_task(
                 self.parameters['warp_task'])
-            
+        
             # is this a smart way to bring in the model?
             self.model = CARE(config=None,
-                         name='denoising_model',
-                         basedir= self.dataSet.analysisPath)
+                             name='denoising_model',
+                             basedir= self.dataSet.analysisPath)
 
     def fragment_count(self):
         return len(self.dataSet.get_fovs())
@@ -99,7 +103,16 @@ class CAREPreprocess(Preprocess):
         return self._preprocess_image(inputImage)
     
     def _preprocess_image(self, inputImage: np.ndarray) -> np.ndarray:
-        return self.model.predict(inputImage, 'YX')
+        outputImage = self.model.predict(inputImage, 'YX')
+        outputImage = self._high_pass_filter(outputImage)
+        return outputImage.astype(np.uint16) # is this smart to return np.uint16?
+        
+    def _high_pass_filter(self, inputImage: np.ndarray) -> np.ndarray:
+        highPassFilterSize = int(2 * np.ceil(2 * self._highPassSigma) + 1)
+        hpImage = imagefilters.high_pass_filter(inputImage,
+                                                highPassFilterSize,
+                                                self._highPassSigma)
+        return hpImage.astype(np.float)
     
     def _run_analysis(self, fragmentIndex):
         warpTask = self.dataSet.load_analysis_task(
