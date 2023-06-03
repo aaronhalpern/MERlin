@@ -5,7 +5,8 @@ import pandas as pd
 import time
 from skimage import registration
 from skimage import transform
-from skimage import feature
+
+from skimage import registration
 
 import cv2
 
@@ -112,6 +113,7 @@ class Warp(analysistask.ParallelAnalysisTask):
                         outputTif.save(
                                 transformedImage,
                                 photometric='MINISBLACK',
+                                contiguous=True,
                                 metadata=imageDescription)
 
         if self.writeAlignedFiducialImages:
@@ -126,9 +128,11 @@ class Warp(analysistask.ParallelAnalysisTask):
                     transformedImage = transform.warp(
                             inputImage, t, preserve_range=True) \
                         .astype(inputImage.dtype)
+
                     outputTif.save(
                             transformedImage, 
                             photometric='MINISBLACK',
+                            contiguous=True,
                             metadata=fiducialImageDescription)
 
         self._save_transformations(transformationList, fov)
@@ -174,6 +178,12 @@ class FiducialCorrelationWarp(Warp):
 
         if 'highpass_sigma' not in self.parameters:
             self.parameters['highpass_sigma'] = 3
+        if 'saturation_percentile' not in self.parameters:
+            self.parameters['saturation_percentile'] = 99.999
+        if 'percentile_pixel_to_keep' not in self.parameters:
+            self.parameters['percentile_pixel_to_keep'] = 99
+        if 'edge_width_to_remove' not in self.parameters:
+            self.parameters['edge_width_to_remove'] = 10
 
     def fragment_count(self):
         return len(self.dataSet.get_fovs())
@@ -187,24 +197,46 @@ class FiducialCorrelationWarp(Warp):
     def get_dependencies(self):
         return []
 
+    def _scale_image(self, img):
+        saturation_percentile = self.parameters['saturation_percentile']
+        return np.minimum(img, np.percentile(img, saturation_percentile))
+
     def _filter(self, inputImage: np.ndarray) -> np.ndarray:
+        # High pass filter
         highPassSigma = self.parameters['highpass_sigma']
         highPassFilterSize = int(2 * np.ceil(2 * highPassSigma) + 1)
         inputImage = cv2.medianBlur(inputImage, ksize = 3)
 
-        return inputImage.astype(float) - cv2.GaussianBlur(
+        high_passed_img = inputImage.astype(float) - cv2.GaussianBlur(
             inputImage, (highPassFilterSize, highPassFilterSize),
             highPassSigma, borderType=cv2.BORDER_REPLICATE)
+
+        # Remove the boundaries
+        edge_width_to_remove = self.parameters['edge_width_to_remove']
+        high_passed_img[:edge_width_to_remove] = 0
+        high_passed_img[high_passed_img.shape[0] - edge_width_to_remove:] = 0
+        high_passed_img[:, :edge_width_to_remove] = 0
+        high_passed_img[:, high_passed_img.shape[1] - edge_width_to_remove:] = 0
+
+        # Only keep the most bright pixels
+        percentile_pixel_to_keep = self.parameters['percentile_pixel_to_keep']
+        high_passed_img[high_passed_img <
+                np.percentile(high_passed_img, percentile_pixel_to_keep)] = 0
+
+        return high_passed_img
 
     def _run_analysis(self, fragmentIndex: int):
         # TODO - this can be more efficient since some images should
         # use the same alignment if they are from the same imaging round
+
+        # not using image _scale_image
         fixedImage = self._filter(
             self.dataSet.get_fiducial_image(0, fragmentIndex))
         offsets = [registration.phase_cross_correlation(
             fixedImage,
             self._filter(self.dataSet.get_fiducial_image(x, fragmentIndex)),
             upsample_factor = 100)[0] for x in
+
                    self.dataSet.get_data_organization().get_data_channels()]
         transformations = [transform.SimilarityTransform(
             translation=[-x[1], -x[0]]) for x in offsets]

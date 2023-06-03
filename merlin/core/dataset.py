@@ -267,7 +267,7 @@ class DataSet(object):
             fileList = [os.path.join(basePath, x) for x in fileList]
         return fileList
 
-    def save_graph_as_gpickle(
+    def save_graph_as_pickle(
             self, graph: nx.Graph, resultName: str,
             analysisTask: TaskOrName = None, resultIndex: int = None,
             subdirectory: str = None):
@@ -285,11 +285,18 @@ class DataSet(object):
                 should be saved to or None if the graph should be
                 saved to the root directory for the analysis task.
         """
+        '''
         savePath = self._analysis_result_save_path(
             resultName, analysisTask, resultIndex, subdirectory, '.gpickle')
         nx.readwrite.gpickle.write_gpickle(graph, savePath)
+        '''
+        savePath = self._analysis_result_save_path(
+            resultName, analysisTask, resultIndex, subdirectory, '.pickle')
+        with open(savePath, 'wb') as f:
+            pickle.dump(graph, f, pickle.HIGHEST_PROTOCOL)
 
-    def load_graph_from_gpickle(
+
+    def load_graph_from_pickle(
             self, resultName: str, analysisTask: TaskOrName = None,
             resultIndex: int = None, subdirectory: str = None):
         """ Load a networkx graph from a gpickle objective saved in the analysis
@@ -306,9 +313,18 @@ class DataSet(object):
                 should be saved to or None if the graph should be
                 saved to the root directory for the analysis task.
         """
+        '''
         savePath = self._analysis_result_save_path(
             resultName, analysisTask, resultIndex, subdirectory, '.gpickle')
         return nx.readwrite.gpickle.read_gpickle(savePath)
+        '''
+        savePath = self._analysis_result_save_path(
+            resultName, analysisTask, resultIndex, subdirectory, '.pickle')
+        with open(savePath, 'rb') as f:
+            graph = pickle.load(f)
+        return graph
+
+
 
     def save_dataframe_to_csv(
             self, dataframe: pandas.DataFrame, resultName: str,

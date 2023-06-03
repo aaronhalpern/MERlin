@@ -223,7 +223,7 @@ class AdaptiveFilterBarcodeDistributionPlots(AbstractPlot):
         fig = plt.figure(figsize=(20, 30))
         for i in range(min(len(areaBins), 6)):
             plt.subplot(6, 4, 4*i+1)
-            plt.imshow(blankHistogram[:, :, i].T + codingHistogram[:, :, i].T,
+            plt.imshow(blankHistogram[:, :, i] + codingHistogram[:, :, i],
                        extent=plotExtent, origin='lower', aspect='auto',
                        cmap='OrRd')
             cbar = plt.colorbar()
@@ -234,7 +234,7 @@ class AdaptiveFilterBarcodeDistributionPlots(AbstractPlot):
                 plt.title('Distribution of all barcodes')
 
             plt.subplot(6, 4, 4*i+2)
-            plt.imshow(blankHistogram[:, :, i].T, extent=plotExtent,
+            plt.imshow(blankHistogram[:, :, i], extent=plotExtent,
                        origin='lower', aspect='auto', cmap='OrRd')
             cbar = plt.colorbar()
             cbar.set_label('Blank count', rotation=270, labelpad=8)
@@ -244,7 +244,7 @@ class AdaptiveFilterBarcodeDistributionPlots(AbstractPlot):
                 plt.title('Distribution of blank barcodes')
 
             plt.subplot(6, 4, 4*i+3)
-            plt.imshow(blankFraction[:, :, i].T, extent=plotExtent,
+            plt.imshow(blankFraction[:, :, i], extent=plotExtent,
                        origin='lower', aspect='auto', cmap='OrRd',
                        vmax=1.0)
             cbar = plt.colorbar()
@@ -255,7 +255,7 @@ class AdaptiveFilterBarcodeDistributionPlots(AbstractPlot):
                 plt.title('Distribution of normalized blank fraction')
 
             plt.subplot(6, 4, 4*i+4)
-            plt.imshow(blankFraction[:, :, i].T < threshold, extent=plotExtent,
+            plt.imshow(blankFraction[:, :, i] < threshold, extent=plotExtent,
                        origin='lower', aspect='auto', cmap='OrRd')
             plt.ylabel('Mean intensity (log10)')
             plt.xlabel('Minimum distance')
@@ -329,13 +329,13 @@ class AdaptiveFilterCountsPerArea(AbstractPlot):
         areaBins = adaptiveTask.get_area_bins()
         allCountsPerArea = np.sum(blankHistogram + codingHistogram, axis=(0, 1))
         blankHistogram[blankFraction >= threshold] = 0
-        codingHistogram[codingHistogram >= threshold] = 0
+        codingHistogram[blankFraction >= threshold] = 0
         countsPerArea = np.sum(blankHistogram + codingHistogram, axis=(0, 1))
 
         fig = plt.figure(figsize=(15, 7))
         plt.bar(areaBins[:-1], np.log10(allCountsPerArea), width=1)
         plt.bar(areaBins[:-1], np.log10(countsPerArea), width=1)
-        plt.legend(['All barcodes', 'Filtered barcodes'])
+        plt.legend(['All barcodes', 'Barcodes passed filtering'])
         plt.ylabel('Barcode count (log10)')
         plt.xlabel('Area')
         plt.title('Abundance vs area')
