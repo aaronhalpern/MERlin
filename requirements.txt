@@ -30,3 +30,5 @@ tables
 tifffile
 urllib3
 xmltodict
+tensorflow
+csbdeep

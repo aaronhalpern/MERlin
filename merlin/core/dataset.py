@@ -204,7 +204,7 @@ class DataSet(object):
 
     def writer_for_analysis_images(
             self, analysisTask: TaskOrName, imageBaseName: str,
-            imageIndex: int = None, imagej: bool = True) -> tifffile.TiffWriter:
+            imageIndex: int = None, imagej: bool = False) -> tifffile.TiffWriter:
         """Get a writer for writing tiff files from an analysis task.
 
         Args:
