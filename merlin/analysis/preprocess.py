@@ -10,11 +10,6 @@ from merlin.data import codebook
 
 from csbdeep.models import CARE
 
-#try:
-#    from csbdeep.models import CARE
-#except:
-#    print('check csbd module')
-
 class Preprocess(analysistask.ParallelAnalysisTask):
 
     """
@@ -46,6 +41,9 @@ class CAREPreprocess(Preprocess):
     def __init__(self, dataSet, parameters=None, analysisName=None):
             super().__init__(dataSet, parameters, analysisName)
 
+            if 'CARE_model_directory' not in self.parameters:
+                raise ValueError('CARE model path not in parameters')
+
             if 'codebook_index' not in self.parameters:
                 self.parameters['codebook_index'] = 0
             if 'write_preprocessed_images' not in self.parameters:
@@ -58,10 +56,12 @@ class CAREPreprocess(Preprocess):
             self.warpTask = self.dataSet.load_analysis_task(
                 self.parameters['warp_task'])
         
-            # is this a smart way to bring in the model?
-            self.model = CARE(config=None,
-                             name='denoising_model',
-                             basedir= self.dataSet.analysisPath)
+            # is this a good way to bring in the model?
+            model_basedir, model_name = os.path.split(self.parameters['CARE_model_directory'])
+            
+            self.model = CARE(config = None,
+                             name = model_name,
+                             basedir= model_basedir)
 
     def fragment_count(self):
         return len(self.dataSet.get_fovs())

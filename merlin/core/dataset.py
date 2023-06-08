@@ -879,13 +879,9 @@ class DataSet(object):
 
 class ImageDataSet(DataSet):
 
-    def __init__(self, 
-                 dataDirectoryName: str,
-                 dataHome: str = None,
+    def __init__(self, dataDirectoryName: str, dataHome: str = None,
                  analysisHome: str = None,
-                 microscopeParametersName: str = None,
-                 piezoParametersName: str = None,
-                 denoisingHome: str = None):
+                 microscopeParametersName: str = None):
         """Create a dataset for the specified raw data.
 
         Args:
@@ -906,18 +902,8 @@ class ImageDataSet(DataSet):
 
         if microscopeParametersName is not None:
             self._import_microscope_parameters(microscopeParametersName)
+    
         self._load_microscope_parameters()
-        
-        # piezo parameters for 3D
-        if piezoParametersName is not None:
-            self._import_piezo_parameters(piezoParametersName)
-        self._load_piezo_parameters()
-        
-        # denoising model 
-        if denoisingHome is not None:
-            self._import_denoising_model(denoisingHome)
-        # do something here - load in the model or wait until later?
-        #### TO DO 
 
     def get_image_file_names(self):
         return sorted(self.rawDataPortal.list_files(
@@ -953,7 +939,7 @@ class ImageDataSet(DataSet):
         destPath = os.sep.join(
                 [self.analysisPath, 'microscope_parameters.json'])
 
-        shutil.copyfile(sourcePath, destPath)
+        shutil.copyfile(sourcePath, destPath) 
 
     def _load_microscope_parameters(self): 
         path = os.sep.join(
@@ -974,42 +960,6 @@ class ImageDataSet(DataSet):
                 'microns_per_pixel', 0.108)
         self.imageDimensions = self.microscopeParameters.get(
                 'image_dimensions', [2048, 2048])
-            
-    # piezo params for 3d merfish
-    def _import_piezo_parameters(self, piezoParametersName):
-        sourcePath = os.sep.join([merlin.MICROSCOPE_PARAMETERS_HOME,
-                piezoParametersName])
-        destPath = os.sep.join(
-                [self.analysisPath, 'piezo_parameters.pkl'])
-
-        shutil.copyfile(sourcePath, destPath)
-
-    def _load_piezo_parameters(self):
-        path = os.sep.join(
-                [self.analysisPath, 'piezo_parameters.pkl'])
-        
-        if os.path.exists(path):
-            with open(path, 'rb') as inputFile:
-                self.piezoParameters = pickle.load(inputFile)
-        else:
-            self.piezoParameters = {}
-        
-        # these pickled interpolation functions in 2D
-        # inputs are in HAL terms z_offset, piezo stage-z
-        # or in Merlin terms z position, true piezo position from .off file 
-        self.piezo_yshift_function = self.piezoParameters.get(
-            'yshift', None)
-        self.piezo_xshift_function = self.piezoParameters.get(
-            'xshift', None)
-        
-    # denoising for 3d merfish
-    def _import_denoising_model(self, denoisingHome):
-        sourcePath = os.sep.join([merlin.DENOISING_HOME,
-                denoisingHome])
-        destPath = os.sep.join(
-                [self.analysisPath, 'denoising_model'])
-        if not os.path.exists(destPath):
-            shutil.copytree(sourcePath, destPath)
 
     def get_microns_per_pixel(self):
         """Get the conversion factor to convert pixels to microns."""
@@ -1055,16 +1005,10 @@ class ImageDataSet(DataSet):
 
 class MERFISHDataSet(ImageDataSet):
 
-    def __init__(self, 
-                 dataDirectoryName: str,
-                 codebookNames: List[str] = None,
-                 dataOrganizationName: str = None,
-                 positionFileName: str = None,
-                 dataHome: str = None,
-                 analysisHome: str = None,
-                 microscopeParametersName: str = None,
-                 piezoParametersName: str = None,
-                 denoisingHome: str = None):
+    def __init__(self, dataDirectoryName: str, codebookNames: List[str] = None,
+                 dataOrganizationName: str = None, positionFileName: str = None,
+                 dataHome: str = None, analysisHome: str = None,
+                 microscopeParametersName: str = None):
         """Create a MERFISH dataset for the specified raw data.
 
         Args:
@@ -1094,12 +1038,8 @@ class MERFISHDataSet(ImageDataSet):
             DenoisingHome: the name of the directory that holds the 
                     denoising model
         """
-        super().__init__(dataDirectoryName,
-                         dataHome, 
-                         analysisHome,
-                         microscopeParametersName,
-                         piezoParametersName,
-                         denoisingHome)
+        super().__init__(dataDirectoryName, dataHome, analysisHome,
+                         microscopeParametersName)
 
         self.dataOrganization = dataorganization.DataOrganization(
                 self, dataOrganizationName)

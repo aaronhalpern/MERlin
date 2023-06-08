@@ -3,11 +3,11 @@ from typing import Union
 import numpy as np
 import pandas as pd
 import time
+import os
+import pickle
 from skimage import registration
 from skimage import transform
-
 from skimage import registration
-
 import cv2
 
 from merlin.core import analysistask
@@ -178,12 +178,6 @@ class FiducialCorrelationWarp(Warp):
 
         if 'highpass_sigma' not in self.parameters:
             self.parameters['highpass_sigma'] = 3
-        if 'saturation_percentile' not in self.parameters:
-            self.parameters['saturation_percentile'] = 99.999
-        if 'percentile_pixel_to_keep' not in self.parameters:
-            self.parameters['percentile_pixel_to_keep'] = 99
-        if 'edge_width_to_remove' not in self.parameters:
-            self.parameters['edge_width_to_remove'] = 10
 
     def fragment_count(self):
         return len(self.dataSet.get_fovs())
@@ -197,39 +191,18 @@ class FiducialCorrelationWarp(Warp):
     def get_dependencies(self):
         return []
 
-    def _scale_image(self, img):
-        saturation_percentile = self.parameters['saturation_percentile']
-        return np.minimum(img, np.percentile(img, saturation_percentile))
-
     def _filter(self, inputImage: np.ndarray) -> np.ndarray:
-        # High pass filter
         highPassSigma = self.parameters['highpass_sigma']
         highPassFilterSize = int(2 * np.ceil(2 * highPassSigma) + 1)
         inputImage = cv2.medianBlur(inputImage, ksize = 3)
 
-        high_passed_img = inputImage.astype(float) - cv2.GaussianBlur(
+        return inputImage.astype(float) - cv2.GaussianBlur(
             inputImage, (highPassFilterSize, highPassFilterSize),
             highPassSigma, borderType=cv2.BORDER_REPLICATE)
-
-        # Remove the boundaries
-        edge_width_to_remove = self.parameters['edge_width_to_remove']
-        high_passed_img[:edge_width_to_remove] = 0
-        high_passed_img[high_passed_img.shape[0] - edge_width_to_remove:] = 0
-        high_passed_img[:, :edge_width_to_remove] = 0
-        high_passed_img[:, high_passed_img.shape[1] - edge_width_to_remove:] = 0
-
-        # Only keep the most bright pixels
-        percentile_pixel_to_keep = self.parameters['percentile_pixel_to_keep']
-        high_passed_img[high_passed_img <
-                np.percentile(high_passed_img, percentile_pixel_to_keep)] = 0
-
-        return high_passed_img
 
     def _run_analysis(self, fragmentIndex: int):
         # TODO - this can be more efficient since some images should
         # use the same alignment if they are from the same imaging round
-
-        # not using image _scale_image
         fixedImage = self._filter(
             self.dataSet.get_fiducial_image(0, fragmentIndex))
         offsets = [registration.phase_cross_correlation(
@@ -259,6 +232,12 @@ class FiducialCorrelationWarp3D(FiducialCorrelationWarp):
 
     def __init__(self, dataSet, parameters=None, analysisName=None):
         super().__init__(dataSet, parameters, analysisName)
+        
+        if 'piezo_correction_filepath' not in self.parameters:
+            self.parameters['piezo_correction_filepath'] = None
+
+        self.load_piezo_parameters(self.parameters['piezo_correction_filepath'])
+        
 
     def fragment_count(self):
         return len(self.dataSet.get_fovs())
@@ -268,6 +247,28 @@ class FiducialCorrelationWarp3D(FiducialCorrelationWarp):
 
     def get_estimated_time(self):
         return 5
+        
+    def load_piezo_parameters(self, path):
+        
+        if os.path.exists(path):
+            with open(path, 'rb') as inputFile:
+                self.piezoParameters = pickle.load(inputFile)
+            # get the interpolation functions
+            # these are the pickled interpolation functions in 2D
+            # inputs are 
+            # in HAL terms:     z_offset,   piezo stage-z
+            # in Merlin terms:  z position, true piezo position from .off file 
+            self.piezo_yshift_function = self.piezoParameters.get(
+                'yshift', None)
+            self.piezo_xshift_function = self.piezoParameters.get(
+                'xshift', None)
+        else:
+            # clunky...
+            print('no piezo pickle file found, no correction to be applied')
+            def piezo_yshift_function(self,a,b):
+                return 0
+            def piezo_xshift_function(self,a,b):
+                return 0
         
     def get_piezo_corrected_frame(self,
                                 fov: int,
@@ -289,9 +290,10 @@ class FiducialCorrelationWarp3D(FiducialCorrelationWarp):
 
         #### make sure this is correct
         # these are the interpolation functions - note the negative sign
-        x_correction = -self.dataSet.piezo_xshift_function(self.dataSet.z_index_to_position(zIndex),
+        # inputs are merlin z position and true zposition of piezo
+        x_correction = -self.piezo_xshift_function(self.dataSet.z_index_to_position(zIndex),
                                                            inputImage_zstage_position)
-        y_correction = -self.dataSet.piezo_yshift_function(self.dataSet.z_index_to_position(zIndex),
+        y_correction = -self.piezo_yshift_function(self.dataSet.z_index_to_position(zIndex),
                                                            inputImage_zstage_position)
 
         transformation = transform.SimilarityTransform(translation=[x_correction, y_correction])
@@ -311,9 +313,9 @@ class FiducialCorrelationWarp3D(FiducialCorrelationWarp):
         stack_zstage_positions = self.dataSet.get_fiducial_image_zstage_positions(dataChannel, 
                                                             fragmentIndex)
 
-        x_correction = -self.dataSet.piezo_xshift_function(stack_zpositions,
+        x_correction = -self.piezo_xshift_function(stack_zpositions,
                                                            stack_zstage_positions)
-        y_correction = -self.dataSet.piezo_yshift_function(stack_zpositions,
+        y_correction = -self.piezo_yshift_function(stack_zpositions,
                                                            stack_zstage_positions)
 
         transforms = [transform.SimilarityTransform(translation=[x, y]) for x,y in zip(x_correction,y_correction)]
