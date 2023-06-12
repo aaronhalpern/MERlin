@@ -162,16 +162,20 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
             self.parameters['preprocess_task'])
         bitCount = self.get_codebook().get_bit_count()
 
-        initialScaleFactors = np.zeros(bitCount)
-        pixelHistograms = preprocessTask.get_pixel_histogram()
-        for i in range(bitCount):
-            cumulativeHistogram = np.cumsum(pixelHistograms[i])
-            cumulativeHistogram = cumulativeHistogram/cumulativeHistogram[-1]
-            # Add two to match matlab code.
-            # TODO: Does +2 make sense? Used to be consistent with Matlab code
-            initialScaleFactors[i] = \
-                np.argmin(np.abs(cumulativeHistogram-0.9)) + 2
-
+        # from Rongxin - setting initial scale factors = 1 if no pixel histograms
+        if preprocessTask.parameters['save_pixel_histogram']:
+            initialScaleFactors = np.zeros(bitCount)
+            pixelHistograms = preprocessTask.get_pixel_histogram()
+            for i in range(bitCount):
+                cumulativeHistogram = np.cumsum(pixelHistograms[i])
+                cumulativeHistogram = cumulativeHistogram/cumulativeHistogram[-1]
+                # Add two to match matlab code.
+                # TODO: Does +2 make sense? Used to be consistent with Matlab code
+                initialScaleFactors[i] = \
+                    np.argmin(np.abs(cumulativeHistogram-0.9)) + 2
+        else:
+            initialScaleFactors = np.ones(bitCount).astype(np.float32)
+            
         return initialScaleFactors
 
     def _get_previous_scale_factors(self) -> np.ndarray:

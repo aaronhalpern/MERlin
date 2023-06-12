@@ -50,6 +50,10 @@ class CAREPreprocess(Preprocess):
                 self.parameters['write_preprocessed_images'] = False
             if 'highpass_sigma' not in self.parameters:
                 self.parameters['highpass_sigma'] = 3
+            if 'save_pixel_histogram' not in self.parameters:
+                self.parameters['save_pixel_histogram'] = False
+            if 'write_preprocessed_FOV' not in self.parameters:
+                self.parameters['write_preprocessed_FOV'] = -1
             
             self._highPassSigma = self.parameters['highpass_sigma']
 
@@ -115,35 +119,43 @@ class CAREPreprocess(Preprocess):
         return hpImage.astype(np.float)
     
     def _run_analysis(self, fragmentIndex):
-        warpTask = self.dataSet.load_analysis_task(
-                self.parameters['warp_task'])
+    
+        if self.parameters['save_pixel_histogram'] or self.parameters['write_preprocessed_images']:
+    
+            if self.parameters['write_preprocessed_FOV'] == -1:
+                self.parameters['write_preprocessed_FOV'] = self.dataSet.get_fovs()
+                
+            if fragmentIndex in self.parameters['write_preprocessed_FOV']:
+            
+                warpTask = self.dataSet.load_analysis_task(
+                        self.parameters['warp_task'])
 
-        histogramBins = np.arange(0, np.iinfo(np.uint16).max, 1)
-        pixelHistogram = np.zeros(
-                (self.get_codebook().get_bit_count(), len(histogramBins)-1))
+                histogramBins = np.arange(0, np.iinfo(np.uint16).max, 1)
+                pixelHistogram = np.zeros(
+                        (self.get_codebook().get_bit_count(), len(histogramBins)-1))
 
-        # this currently only is to calculate the pixel histograms in order
-        # to estimate the initial scale factors. This is likely unnecessary
+                # this currently only is to calculate the pixel histograms in order
+                # to estimate the initial scale factors. This is likely unnecessary
 
-        with self.dataSet.writer_for_analysis_images(
-                 self.analysisName, 'preprocessed_images', fragmentIndex) as outputTif:
+                with self.dataSet.writer_for_analysis_images(
+                         self.analysisName, 'preprocessed_images', fragmentIndex) as outputTif:
 
-            for bi, b in enumerate(self.get_codebook().get_bit_names()):
-                dataChannel = self.dataSet.get_data_organization()\
-                        .get_data_channel_for_bit(b)
-                for i in range(len(self.dataSet.get_z_positions())):
-                    inputImage = warpTask.get_aligned_image(
-                            fragmentIndex, dataChannel, i)
-                    outputImage = self._preprocess_image(inputImage)
+                    for bi, b in enumerate(self.get_codebook().get_bit_names()):
+                        dataChannel = self.dataSet.get_data_organization()\
+                                .get_data_channel_for_bit(b)
+                        for i in range(len(self.dataSet.get_z_positions())):
+                            inputImage = warpTask.get_aligned_image(
+                                    fragmentIndex, dataChannel, i)
+                            outputImage = self._preprocess_image(inputImage)
 
-                    pixelHistogram[bi, :] += np.histogram(
-                            outputImage, bins=histogramBins)[0]
-                    
-                    # save data?
-                    if self.parameters['write_preprocessed_images']:
-                        outputTif.save(outputImage,photometric='MINISBLACK')
+                            pixelHistogram[bi, :] += np.histogram(
+                                    outputImage, bins=histogramBins)[0]
+                            
+                            # save data?
+                            if self.parameters['write_preprocessed_images']:
+                                outputTif.save(outputImage,photometric='MINISBLACK')
 
-        self._save_pixel_histogram(pixelHistogram, fragmentIndex)
+                self._save_pixel_histogram(pixelHistogram, fragmentIndex)
 
         """
         # want to visualize the data?
