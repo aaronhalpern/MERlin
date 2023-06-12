@@ -4,6 +4,7 @@ import numpy as np
 from skimage import measure
 from skimage import segmentation
 from skimage import exposure
+from skimage import transform
 import rtree
 from shapely import geometry
 from typing import List, Dict, Tuple
@@ -730,6 +731,11 @@ class CellPoseSegmentSingleChannel3D(FeatureSavingAnalysisTask):
             self.parameters['anisotropy'] = 1 
         if 'stitch_threshold' not in self.parameters:
             self.parameters['stitch_threshold'] = 0.4
+            
+        # downsample to save on memory for cellpose
+            # ex downsample_factor 2 will reduce the image size in half, but keep the same number of z planes
+        if 'downsample_factor' not in self.parameters:
+            self.parameters['downsample_factor'] = None
 
     def fragment_count(self):
         return len(self.dataSet.get_fovs())
@@ -790,6 +796,17 @@ class CellPoseSegmentSingleChannel3D(FeatureSavingAnalysisTask):
             model = cellpose.models.Cellpose(gpu=self.parameters['use_gpu'],
                                              model_type=self.parameters['model_type'])
 
+        # downsample the image to save on memory
+        if self.parameters['downsample_factor'] is not None:
+            factor = self.parameters['downsample_factor']
+            num_frames, rows_i, cols_i = seg_images.shape
+            rows_f = int(rows_i / factor)
+            cols_f = int(cols_i / factor)
+            seg_images = transform.resize(seg_images, [num_frames,rows_f,cols_f],
+                preserve_range = True).astype(seg_images.dtype)
+            # scale the diameter factor too
+            self.parameters['diameter'] = self.parameters['diameter']/factor
+
         # evaluate the model using one of two ways, 3d vs 2d stitching
         # 2d stitching seems smoother imo
         if self.parameters['cellpose_3D_stitching']:
@@ -808,6 +825,12 @@ class CellPoseSegmentSingleChannel3D(FeatureSavingAnalysisTask):
                                             channels = [0,0],
                                             anisotropy = self.parameters['anisotropy']
                                             )
+        
+        # upsample the mask image if it was downsampled
+        if self.parameters['downsample_factor'] is not None:
+            masks = transform.resize(masks, [num_frames,rows_i,cols_i],
+                order = 0,
+                preserve_range = True).astype(masks.dtype)
         
         if self.parameters['dump_segmented_masks']:
             self._save_tiff_images(fragmentIndex, 'segmented_mask', masks)
