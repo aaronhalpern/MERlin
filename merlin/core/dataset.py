@@ -216,7 +216,9 @@ class DataSet(object):
 
         """
         return tifffile.TiffWriter(self._analysis_image_name(
-            analysisTask, imageBaseName, imageIndex), imagej=imagej)
+            analysisTask, imageBaseName, imageIndex), imagej=imagej, bigtiff=True) 
+            # turned on bigtiff here by default
+            # so must use FIJI to read data...
 
     @staticmethod
     def analysis_tiff_description(sliceCount: int, frameCount: int) -> Dict:
