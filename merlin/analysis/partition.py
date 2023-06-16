@@ -78,7 +78,7 @@ class PartitionBarcodes(analysistask.ParallelAnalysisTask):
                 currentFOVBarcodes = partialBC.copy(deep=True)
             else:
                 currentFOVBarcodes = pandas.concat(
-                    [currentFOVBarcodes, partialBC], 0)
+                    [currentFOVBarcodes, partialBC], axis = 0) # pandas > 2
 
         currentFOVBarcodes = currentFOVBarcodes.reset_index().copy(deep=True)
 
@@ -219,7 +219,7 @@ class PartitionBarcodes(analysistask.ParallelAnalysisTask):
                 currentFOVBarcodes = partialBC.copy(deep=True)
             else:
                 currentFOVBarcodes = pandas.concat(
-                    [currentFOVBarcodes, partialBC], 0)
+                    [currentFOVBarcodes, partialBC], axis = 0) # pandas > 2
 
         currentFOVBarcodes = currentFOVBarcodes.reset_index().copy(deep=True)
 
