@@ -48,7 +48,7 @@ class Decode(BarcodeSavingParallelAnalysisTask):
         if 'write_decoded_images' not in self.parameters:
             self.parameters['write_decoded_images'] = True
         if 'write_decoded_FOVs' not in self.parameters:
-            self.parameters['write_decoded_FOVs'] = None
+            self.parameters['write_decoded_FOVs'] = [int(fov) for fov in self.dataSet.get_fovs()] # annoying json list
         if 'minimum_area' not in self.parameters:
             self.parameters['minimum_area'] = 0
         if 'distance_threshold' not in self.parameters:
@@ -165,12 +165,7 @@ class Decode(BarcodeSavingParallelAnalysisTask):
                 del normalizedPixelTraces
 
         if self.parameters['write_decoded_images']:
-            if self.parameters['write_decoded_FOVs'] is not None:
-                if fragmentIndex in self.parameters['write_decoded_FOVs']:
-                    self._save_decoded_images(
-                        fragmentIndex, zPositionCount, decodedImages, magnitudeImages,
-                        distances)
-            else:
+            if fragmentIndex in self.parameters['write_decoded_FOVs']:
                 self._save_decoded_images(
                     fragmentIndex, zPositionCount, decodedImages, magnitudeImages,
                     distances)

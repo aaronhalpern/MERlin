@@ -53,6 +53,12 @@ class DeconvolutionPreprocess(Preprocess):
             self.parameters['decon_iterations'] = 20
         if 'codebook_index' not in self.parameters:
             self.parameters['codebook_index'] = 0
+            
+        if self.parameters['write_preprocessed_images']:
+            if 'write_preprocessed_FOV' not in self.parameters:
+                    self.parameters['write_preprocessed_FOV'] = [int(fov) for fov in self.dataSet.get_fovs()] # annoying json list
+        else:
+            self.parameters['write_preprocessed_FOV'] = [-1]
 
         self._highPassSigma = self.parameters['highpass_sigma']
         self._deconSigma = self.parameters['decon_sigma']
@@ -101,13 +107,17 @@ class DeconvolutionPreprocess(Preprocess):
         return self._preprocess_image(inputImage)
 
     def _high_pass_filter(self, inputImage: np.ndarray) -> np.ndarray:
-        highPassFilterSize = int(2 * np.ceil(2 * self._highPassSigma) + 1)
-        hpImage = imagefilters.high_pass_filter(inputImage,
-                                                highPassFilterSize,
-                                                self._highPassSigma)
-        return hpImage.astype(np.float)
+        if self._highPassSigma == 0:
+            return inputImage
+        else:
+            highPassFilterSize = int(2 * np.ceil(2 * self._highPassSigma) + 1)
+            hpImage = imagefilters.high_pass_filter(inputImage,
+                                                    highPassFilterSize,
+                                                    self._highPassSigma)
+            return hpImage.astype(np.float)
 
     def _run_analysis(self, fragmentIndex):
+    
         warpTask = self.dataSet.load_analysis_task(
                 self.parameters['warp_task'])
 
@@ -117,28 +127,37 @@ class DeconvolutionPreprocess(Preprocess):
 
         # this currently only is to calculate the pixel histograms in order
         # to estimate the initial scale factors. This is likely unnecessary
-        for bi, b in enumerate(self.get_codebook().get_bit_names()):
-            dataChannel = self.dataSet.get_data_organization()\
-                    .get_data_channel_for_bit(b)
-            for i in range(len(self.dataSet.get_z_positions())):
-                inputImage = warpTask.get_aligned_image(
-                        fragmentIndex, dataChannel, i)
-                deconvolvedImage = self._preprocess_image(inputImage)
+        
+        with self.dataSet.writer_for_analysis_images(
+            self.analysisName, 'preprocessed_images', fragmentIndex) as outputTif:
+        
+            for bi, b in enumerate(self.get_codebook().get_bit_names()):
+                dataChannel = self.dataSet.get_data_organization()\
+                        .get_data_channel_for_bit(b)
+                for i in range(len(self.dataSet.get_z_positions())):
+                    inputImage = warpTask.get_aligned_image(
+                            fragmentIndex, dataChannel, i)
+                    deconvolvedImage = self._preprocess_image(inputImage)
 
-                pixelHistogram[bi, :] += np.histogram(
-                        deconvolvedImage, bins=histogramBins)[0]
+                    pixelHistogram[bi, :] += np.histogram(
+                            deconvolvedImage, bins=histogramBins)[0]
+                            
+                    # save data?
+                    if fragmentIndex in self.parameters['write_preprocessed_FOV']:
+                        outputTif.save(deconvolvedImage, photometric='MINISBLACK')
 
         self._save_pixel_histogram(pixelHistogram, fragmentIndex)
 
     def _preprocess_image(self, inputImage: np.ndarray) -> np.ndarray:
-        deconFilterSize = self.parameters['decon_filter_size']
-
-        filteredImage = self._high_pass_filter(inputImage)
-        deconvolvedImage = deconvolve.deconvolve_lucyrichardson(
-            filteredImage, deconFilterSize, self._deconSigma,
-            self._deconIterations).astype(np.uint16)
-        return deconvolvedImage
-
+        if self._deconIterations == 0:
+            return inputImage
+        else:
+            deconFilterSize = self.parameters['decon_filter_size']
+            filteredImage = self._high_pass_filter(inputImage)
+            deconvolvedImage = deconvolve.deconvolve_lucyrichardson(
+                filteredImage, deconFilterSize, self._deconSigma,
+                self._deconIterations).astype(np.uint16)
+            return deconvolvedImage
 
 class DeconvolutionPreprocessGuo(DeconvolutionPreprocess):
 

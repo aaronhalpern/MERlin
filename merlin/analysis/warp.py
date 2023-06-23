@@ -22,10 +22,11 @@ class Warp(analysistask.ParallelAnalysisTask):
         if 'write_fiducial_images' not in self.parameters:
             self.parameters['write_fiducial_images'] = False
         if 'write_aligned_images' not in self.parameters:
-            self.parameters['write_aligned_images'] = False
+            self.parameters['write_aligned_images'] = False         
+        if 'write_FOVs' not in self.parameters:
+            self.parameters['write_FOVs'] = [int(fov) for fov in self.dataSet.get_fovs()] # annoying json list
 
-        self.writeAlignedFiducialImages = self.parameters[
-                'write_fiducial_images']
+        self.writeAlignedFiducialImages = self.parameters['write_fiducial_images']
 
     def get_aligned_image_set(
             self, fov: int,
@@ -91,41 +92,43 @@ class Warp(analysistask.ParallelAnalysisTask):
 
         dataChannels = self.dataSet.get_data_organization().get_data_channels()
 
-        if self.parameters['write_aligned_images']:
-            zPositions = self.dataSet.get_z_positions()
+        if fov in self.parameters['write_FOVs']:
+        
+            if self.parameters['write_aligned_images']:
+                zPositions = self.dataSet.get_z_positions()
 
-            imageDescription = self.dataSet.analysis_tiff_description(
-                    len(zPositions), len(dataChannels))
+                imageDescription = self.dataSet.analysis_tiff_description(
+                        len(zPositions), len(dataChannels))
 
-            with self.dataSet.writer_for_analysis_images(
-                    self, 'aligned_images', fov) as outputTif:
-                for t, x in zip(transformationList, dataChannels):
-                    for z in zPositions:
-                        inputImage = self.dataSet.get_raw_image(x, fov, z)
+                with self.dataSet.writer_for_analysis_images(
+                        self, 'aligned_images', fov) as outputTif:
+                    for t, x in zip(transformationList, dataChannels):
+                        for z in zPositions:
+                            inputImage = self.dataSet.get_raw_image(x, fov, z)
+                            transformedImage = transform.warp(
+                                    inputImage, t, preserve_range=True) \
+                                .astype(inputImage.dtype)
+                            outputTif.save(
+                                    transformedImage,
+                                    photometric='MINISBLACK',
+                                    metadata=imageDescription)
+
+            if self.parameters['write_fiducial_images']:
+
+                fiducialImageDescription = self.dataSet.analysis_tiff_description(
+                        1, len(dataChannels))
+
+                with self.dataSet.writer_for_analysis_images(
+                        self, 'aligned_fiducial_images', fov) as outputTif:
+                    for t, x in zip(transformationList, dataChannels):
+                        inputImage = self.dataSet.get_fiducial_image(x, fov)
                         transformedImage = transform.warp(
                                 inputImage, t, preserve_range=True) \
                             .astype(inputImage.dtype)
                         outputTif.save(
-                                transformedImage,
+                                transformedImage, 
                                 photometric='MINISBLACK',
-                                metadata=imageDescription)
-
-        if self.writeAlignedFiducialImages:
-
-            fiducialImageDescription = self.dataSet.analysis_tiff_description(
-                    1, len(dataChannels))
-
-            with self.dataSet.writer_for_analysis_images(
-                    self, 'aligned_fiducial_images', fov) as outputTif:
-                for t, x in zip(transformationList, dataChannels):
-                    inputImage = self.dataSet.get_fiducial_image(x, fov)
-                    transformedImage = transform.warp(
-                            inputImage, t, preserve_range=True) \
-                        .astype(inputImage.dtype)
-                    outputTif.save(
-                            transformedImage, 
-                            photometric='MINISBLACK',
-                            metadata=fiducialImageDescription)
+                                metadata=fiducialImageDescription)
 
         self._save_transformations(transformationList, fov)
 
