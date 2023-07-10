@@ -56,10 +56,15 @@ class DataOrganization(object):
             self.data = pandas.read_csv(
                 filePath,
                 converters={'frame': _parse_int_list,
-                            'fiducial3DStackFrames': _parse_int_list,
-                            'zPos': _parse_list,
-                            'fiducial3DzPos': _parse_list}
+                            'zPos': _parse_list}
                             )
+                            
+            # specific for 3d registration
+            if 'fiducial3DStackFrames' in self.data.columns:
+                self.data['fiducial3DStackFrames'] = self.data['fiducial3DStackFrames'].apply(_parse_int_list)
+            if 'fiducial3DzPos' in self.data.columns:
+                self.data['fiducial3DzPos'] = self.data['fiducial3DzPos'].apply(_parse_list)
+
             self.data['readoutName'] = self.data['readoutName'].str.strip()
             self._dataSet.save_dataframe_to_csv(
                     self.data, 'dataorganization', index=False)
@@ -68,17 +73,26 @@ class DataOrganization(object):
             self.data = self._dataSet.load_dataframe_from_csv(
                 'dataorganization',
                 converters={'frame': _parse_int_list,
-                            'fiducial3DStackFrames': _parse_int_list,
-                            'zPos': _parse_list,
-                            'fiducial3DzPos': _parse_list}
+                            'zPos': _parse_list}
                             )
 
+            # specific for 3d registration
+            if 'fiducial3DStackFrames' in self.data.columns:
+                self.data['fiducial3DStackFrames'] = self.data['fiducial3DStackFrames'].apply(_parse_int_list)
+            if 'fiducial3DzPos' in self.data.columns:
+                self.data['fiducial3DzPos'] = self.data['fiducial3DzPos'].apply(_parse_list)
+
         stringColumns = ['readoutName', 'channelName', 'imageType',
-                         'imageRegExp', 'fiducialImageType', 'fiducialRegExp',
-                         'fiducial3DImageType', 'fiducial3DRegExp',
-                         
+                         'imageRegExp', 'fiducialImageType', 'fiducialRegExp'
                          ]
+                         
         self.data[stringColumns] = self.data[stringColumns].astype('str')
+        
+        if 'fiducial3DImageType' in self.data.columns:
+                self.data['fiducial3DImageType'] = self.data['fiducial3DImageType'].astype('str')
+        if 'fiducial3DRegExp' in self.data.columns:
+                self.data['fiducial3DRegExp'] = self.data['fiducial3DRegExp'].astype('str')
+        
         self._map_image_files()
 
     def get_data_channels(self) -> np.array:
@@ -331,15 +345,27 @@ class DataOrganization(object):
             # note that some may get added twice - remove them later
             uniqueTypes = []
             uniqueRegExps = []
-            for imtype, imregex in zip(['imageType','fiducialImageType','fiducial3DImageType'],
-                              ['imageRegExp','fiducialRegExp','fiducial3DRegExp']):
-                              
-                uniqueEntries = self.data.drop_duplicates(
-                    subset = [imtype, imregex], keep='first')
-                            
-                uniqueTypes += list(uniqueEntries[imtype])
-                uniqueRegExps += list(uniqueEntries[imregex])
-               
+            
+            # handle case when 3d registration images are present..
+            if ('fiducial3DImageType' in self.data.columns) and ('fiducial3DRegExp' in self.data.columns):
+                for imtype, imregex in zip(['imageType','fiducialImageType','fiducial3DImageType'],
+                                  ['imageRegExp','fiducialRegExp','fiducial3DRegExp']):
+                                  
+                    uniqueEntries = self.data.drop_duplicates(
+                        subset = [imtype, imregex], keep='first')
+                                
+                    uniqueTypes += list(uniqueEntries[imtype])
+                    uniqueRegExps += list(uniqueEntries[imregex])
+            else:
+                for imtype, imregex in zip(['imageType','fiducialImageType'],
+                                  ['imageRegExp','fiducialRegExp']):
+                                  
+                    uniqueEntries = self.data.drop_duplicates(
+                        subset = [imtype, imregex], keep='first')
+                                
+                    uniqueTypes += list(uniqueEntries[imtype])
+                    uniqueRegExps += list(uniqueEntries[imregex])
+                
 
             fileNames = self._dataSet.get_image_file_names()
             if len(fileNames) == 0:
