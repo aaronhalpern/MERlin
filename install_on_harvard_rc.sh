@@ -1,11 +1,11 @@
 #!/bin/bash
 # Install the MERlin package on Harvard RC
-# Run this script in the home directory of MERlin
+# Run this script in the directory containing MERlin
 
-module load Mamba/4.14.0-0
-module load gcc/8.2.0-fasrc01
+module load python/3.10.9-fasrc01
+module load gcc/12.2.0-fasrc01
 
-mamba create --name merlin_env_2 python=3.8
-mamba activate merlin_env_2
+mamba create --name merlin_update
+source activate merlin_update
 
-pip install -e .
+pip install -e MERlin
