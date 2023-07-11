@@ -50,6 +50,8 @@ class CAREPreprocess(Preprocess):
                 self.parameters['write_preprocessed_images'] = False
             if 'highpass_sigma' not in self.parameters:
                 self.parameters['highpass_sigma'] = 3
+            # turn of save pixel histogram - it can be time consuming for CARE
+            # will assume initial scale factors are = 1 in Optimization
             if 'save_pixel_histogram' not in self.parameters:
                 self.parameters['save_pixel_histogram'] = False
             if 'write_preprocessed_FOV' not in self.parameters:
@@ -171,6 +173,8 @@ class DeconvolutionPreprocess(Preprocess):
             self.parameters['decon_iterations'] = 20
         if 'codebook_index' not in self.parameters:
             self.parameters['codebook_index'] = 0
+        if 'save_pixel_histogram' not in self.parameters:
+                self.parameters['save_pixel_histogram'] = True
 
         self._highPassSigma = self.parameters['highpass_sigma']
         self._deconSigma = self.parameters['decon_sigma']
@@ -233,20 +237,21 @@ class DeconvolutionPreprocess(Preprocess):
         pixelHistogram = np.zeros(
                 (self.get_codebook().get_bit_count(), len(histogramBins)-1))
 
-        # this currently only is to calculate the pixel histograms in order
-        # to estimate the initial scale factors. This is likely unnecessary
-        for bi, b in enumerate(self.get_codebook().get_bit_names()):
-            dataChannel = self.dataSet.get_data_organization()\
-                    .get_data_channel_for_bit(b)
-            for i in range(len(self.dataSet.get_z_positions())):
-                inputImage = warpTask.get_aligned_image(
-                        fragmentIndex, dataChannel, i)
-                deconvolvedImage = self._preprocess_image(inputImage)
+        if self.parameters['save_pixel_histogram']:
+            # this currently only is to calculate the pixel histograms in order
+            # to estimate the initial scale factors. This is likely unnecessary
+            for bi, b in enumerate(self.get_codebook().get_bit_names()):
+                dataChannel = self.dataSet.get_data_organization()\
+                        .get_data_channel_for_bit(b)
+                for i in range(len(self.dataSet.get_z_positions())):
+                    inputImage = warpTask.get_aligned_image(
+                            fragmentIndex, dataChannel, i)
+                    deconvolvedImage = self._preprocess_image(inputImage)
 
-                pixelHistogram[bi, :] += np.histogram(
-                        deconvolvedImage, bins=histogramBins)[0]
+                    pixelHistogram[bi, :] += np.histogram(
+                            deconvolvedImage, bins=histogramBins)[0]
 
-        self._save_pixel_histogram(pixelHistogram, fragmentIndex)
+            self._save_pixel_histogram(pixelHistogram, fragmentIndex)
 
     def _preprocess_image(self, inputImage: np.ndarray) -> np.ndarray:
         deconFilterSize = self.parameters['decon_filter_size']
