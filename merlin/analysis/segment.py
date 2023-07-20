@@ -811,20 +811,24 @@ class CellPoseSegmentSingleChannel3D(FeatureSavingAnalysisTask):
         # 2d stitching seems smoother imo
         if self.parameters['cellpose_3D_stitching']:
             # 2d-3d stitching method
-            masks, flows, styles = model.eval(seg_images, 
+            cellpose_output = model.eval(seg_images, 
                                             diameter = self.parameters['diameter'], 
                                             do_3D = False,
                                             channels = [0,0],
                                             stitch_threshold=self.parameters['stitch_threshold']
                                             )
-            # 3d anisotropy method
         else:
-            masks, flows, styles = model.eval(seg_images, 
+            # 3d anisotropy method
+            cellpose_output = model.eval(seg_images, 
                                             diameter = self.parameters['diameter'], 
                                             do_3D = True,
                                             channels = [0,0],
                                             anisotropy = self.parameters['anisotropy']
                                             )
+                                            
+        # only take the mask output of cellpose
+        # do it this way since sometimes cellpose responds with 3 or 4 outputs... weird...
+        masks = cellpose_output[0]
         
         # upsample the mask image if it was downsampled
         if self.parameters['downsample_factor'] is not None:

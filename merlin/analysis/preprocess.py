@@ -55,7 +55,7 @@ class CAREPreprocess(Preprocess):
             if 'save_pixel_histogram' not in self.parameters:
                 self.parameters['save_pixel_histogram'] = False
             if 'write_preprocessed_FOV' not in self.parameters:
-                self.parameters['write_preprocessed_FOV'] = -1
+                self.parameters['write_preprocessed_FOV'] = [-1]
             
             self._highPassSigma = self.parameters['highpass_sigma']
 
@@ -123,9 +123,8 @@ class CAREPreprocess(Preprocess):
     def _run_analysis(self, fragmentIndex):
     
         if self.parameters['write_preprocessed_images']:
-  
-            if self.parameters['write_preprocessed_FOV'] == -1:
-                self.parameters['write_preprocessed_FOV'] = self.dataSet.get_fovs()     
+            if self.parameters['write_preprocessed_FOV'] == [-1]:
+                self.parameters['write_preprocessed_FOV'] = self.dataSet.get_fovs()
             
         if self.parameters['save_pixel_histogram'] or (fragmentIndex in self.parameters['write_preprocessed_FOV']):
         
@@ -173,8 +172,14 @@ class DeconvolutionPreprocess(Preprocess):
             self.parameters['decon_iterations'] = 20
         if 'codebook_index' not in self.parameters:
             self.parameters['codebook_index'] = 0
+        
+        # add some options to save preprocessed images
+        if 'write_preprocessed_images' not in self.parameters:
+            self.parameters['write_preprocessed_images'] = False                
+        if 'write_preprocessed_FOV' not in self.parameters:
+            self.parameters['write_preprocessed_FOV'] = -1
         if 'save_pixel_histogram' not in self.parameters:
-                self.parameters['save_pixel_histogram'] = True
+            self.parameters['save_pixel_histogram'] = True
 
         self._highPassSigma = self.parameters['highpass_sigma']
         self._deconSigma = self.parameters['decon_sigma']
@@ -230,26 +235,39 @@ class DeconvolutionPreprocess(Preprocess):
         return hpImage.astype(np.float)
 
     def _run_analysis(self, fragmentIndex):
-        warpTask = self.dataSet.load_analysis_task(
-                self.parameters['warp_task'])
+    
+        if self.parameters['write_preprocessed_images']:
+            if self.parameters['write_preprocessed_FOV'] == -1:
+                self.parameters['write_preprocessed_FOV'] = self.dataSet.get_fovs()     
+            
+        if self.parameters['save_pixel_histogram'] or (fragmentIndex in self.parameters['write_preprocessed_FOV']):
+    
+            warpTask = self.dataSet.load_analysis_task(
+                    self.parameters['warp_task'])
 
-        histogramBins = np.arange(0, np.iinfo(np.uint16).max, 1)
-        pixelHistogram = np.zeros(
-                (self.get_codebook().get_bit_count(), len(histogramBins)-1))
+            histogramBins = np.arange(0, np.iinfo(np.uint16).max, 1)
+            pixelHistogram = np.zeros(
+                    (self.get_codebook().get_bit_count(), len(histogramBins)-1))
 
-        if self.parameters['save_pixel_histogram']:
-            # this currently only is to calculate the pixel histograms in order
-            # to estimate the initial scale factors. This is likely unnecessary
-            for bi, b in enumerate(self.get_codebook().get_bit_names()):
-                dataChannel = self.dataSet.get_data_organization()\
-                        .get_data_channel_for_bit(b)
-                for i in range(len(self.dataSet.get_z_positions())):
-                    inputImage = warpTask.get_aligned_image(
-                            fragmentIndex, dataChannel, i)
-                    deconvolvedImage = self._preprocess_image(inputImage)
+                # this currently only is to calculate the pixel histograms in order
+                # to estimate the initial scale factors. This is likely unnecessary
+                
+            with self.dataSet.writer_for_analysis_images(
+                     self.analysisName, 'preprocessed_images', fragmentIndex) as outputTif:
+                
+                for bi, b in enumerate(self.get_codebook().get_bit_names()):
+                    dataChannel = self.dataSet.get_data_organization()\
+                            .get_data_channel_for_bit(b)
+                    for i in range(len(self.dataSet.get_z_positions())):
+                        inputImage = warpTask.get_aligned_image(
+                                fragmentIndex, dataChannel, i)
+                        deconvolvedImage = self._preprocess_image(inputImage)
 
-                    pixelHistogram[bi, :] += np.histogram(
-                            deconvolvedImage, bins=histogramBins)[0]
+                        pixelHistogram[bi, :] += np.histogram(
+                                deconvolvedImage, bins=histogramBins)[0]
+                        
+                        if self.parameters['write_preprocessed_images']:
+                            outputTif.save(deconvolvedImage, photometric='MINISBLACK')
 
             self._save_pixel_histogram(pixelHistogram, fragmentIndex)
 
