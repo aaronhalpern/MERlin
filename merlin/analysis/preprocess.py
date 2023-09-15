@@ -177,7 +177,7 @@ class DeconvolutionPreprocess(Preprocess):
         if 'write_preprocessed_images' not in self.parameters:
             self.parameters['write_preprocessed_images'] = False                
         if 'write_preprocessed_FOV' not in self.parameters:
-            self.parameters['write_preprocessed_FOV'] = -1
+            self.parameters['write_preprocessed_FOV'] = [-1]
         if 'save_pixel_histogram' not in self.parameters:
             self.parameters['save_pixel_histogram'] = True
 
@@ -236,8 +236,9 @@ class DeconvolutionPreprocess(Preprocess):
 
     def _run_analysis(self, fragmentIndex):
     
+        # fix me - find a better way to specify which fov to export...
         if self.parameters['write_preprocessed_images']:
-            if self.parameters['write_preprocessed_FOV'] == -1:
+            if self.parameters['write_preprocessed_FOV'] == [-1]:
                 self.parameters['write_preprocessed_FOV'] = self.dataSet.get_fovs()     
             
         if self.parameters['save_pixel_histogram'] or (fragmentIndex in self.parameters['write_preprocessed_FOV']):

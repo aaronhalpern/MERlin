@@ -5,6 +5,8 @@ from typing import Dict
 from typing import List
 import pandas
 import random
+import pickle
+import os
 
 from merlin.analysis import decode
 from merlin.util import decoding
@@ -200,10 +202,28 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
 
     def _get_previous_chromatic_transformations(self)\
             -> Dict[str, Dict[str, transform.SimilarityTransform]]:
+            
         if 'previous_iteration' not in self.parameters:
             usedColors = self._get_used_colors()
             return {u: {v: transform.SimilarityTransform()
                         for v in usedColors if v >= u} for u in usedColors}
+        
+        # try to load in a pre-corrected chromatic transformation
+        # and save it as the chromatic_corrections.pkl file
+        # this should avoid doing the majority of the work in _get_chromatic_transformations()
+        # however make sure to have parameters['optimize_chromatic_correction'] = true
+        elif 'chromatic_correction_file' in self.parameters:
+            with open(self.parameters['chromatic_correction_file'], 'rb') as f:
+                chromaticTransformations = pickle.load(f)
+            # is it necessary to save?
+            savePath = self.dataSet._analysis_result_save_path(
+                'chromatic_corrections', self.analysisName)
+            if not os.path.exists(savePath):
+                self.dataSet.save_pickle_analysis_result(
+                    chromaticTransformations, 'chromatic_corrections', self.analysisName)
+                    
+            return chromaticTransformations
+            
         else:
             previousIteration = self.dataSet.load_analysis_task(
                 self.parameters['previous_iteration'])
@@ -437,4 +457,217 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
             previousHistory = self.dataSet.load_analysis_task(
                 self.parameters['previous_iteration']
             ).get_barcode_count_history()
+            return np.append(previousHistory, [countsMean], axis=0)
+
+
+class OptimizeIterationFOV(OptimizeIteration):
+
+    """
+    An analysis task for performing a single iteration of scale factor
+    optimization.
+    """
+
+    def __init__(self, dataSet, parameters=None, analysisName=None):
+        super().__init__(dataSet, parameters, analysisName)
+
+        if 'area_threshold' not in self.parameters:
+            self.parameters['area_threshold'] = 4
+        if 'optimize_background' not in self.parameters:
+            self.parameters['optimize_background'] = False
+        if 'optimize_chromatic_correction' not in self.parameters:
+            self.parameters['optimize_chromatic_correction'] = False
+        if 'crop_width' not in self.parameters:
+            self.parameters['crop_width'] = 50
+        if 'z_index' not in self.parameters:
+            zpos = self.dataSet.get_data_organization().get_z_positions()
+            self.parameters['z_index'] = int(len(zpos)/2)
+
+        # for now just do all FOVs
+        self.parameters['fov_index'] = self.dataSet.get_fovs().tolist() # for serializing json converts numpy type to python type...
+        self.parameters['fov_per_iteration'] = len(self.parameters['fov_index'])
+
+    def _run_analysis(self, fragmentIndex):
+        preprocessTask = self.dataSet.load_analysis_task(
+                self.parameters['preprocess_task'])
+        codebook = self.get_codebook()
+
+        # this is where the FOV and zindex are decided
+        fovIndex = self.parameters['fov_index'][fragmentIndex]
+        zIndex = self.parameters['z_index']
+
+        scaleFactors = self._get_previous_scale_factors(fragmentIndex)
+        backgrounds = self._get_previous_backgrounds(fragmentIndex)
+        chromaticTransformations = \
+            self._get_previous_chromatic_transformations()
+
+        self.dataSet.save_numpy_analysis_result(
+            scaleFactors, 'previous_scale_factors', self.analysisName,
+            resultIndex=fragmentIndex)
+        self.dataSet.save_numpy_analysis_result(
+            backgrounds, 'previous_backgrounds', self.analysisName,
+            resultIndex=fragmentIndex)
+        self.dataSet.save_pickle_analysis_result(
+            chromaticTransformations, 'previous_chromatic_corrections',
+            self.analysisName, resultIndex=fragmentIndex)
+        self.dataSet.save_numpy_analysis_result(
+            np.array([fovIndex, zIndex]), 'select_frame', self.analysisName,
+            resultIndex=fragmentIndex)
+
+        chromaticCorrector = aberration.RigidChromaticCorrector(
+            chromaticTransformations, self.get_reference_color())
+        warpedImages = preprocessTask.get_processed_image_set(
+            fovIndex, zIndex=zIndex, chromaticCorrector=chromaticCorrector)
+
+        decoder = decoding.PixelBasedDecoder(codebook)
+        areaThreshold = self.parameters['area_threshold']
+        decoder.refactorAreaThreshold = areaThreshold
+        di, pm, npt, d = decoder.decode_pixels(warpedImages, scaleFactors,
+                                               backgrounds)
+
+        refactors, backgrounds, barcodesSeen = \
+            decoder.extract_refactors(
+                di, pm, npt, extractBackgrounds=self.parameters[
+                    'optimize_background'])
+
+        # TODO this saves the barcodes under fragment instead of fov
+        # the barcodedb should be made more general
+        cropWidth = self.parameters['crop_width']
+        self.get_barcode_database().write_barcodes(
+            pandas.concat([decoder.extract_barcodes_with_index(
+                i, di, pm, npt, d, fovIndex, cropWidth,
+                zIndex, minimumArea=areaThreshold)
+                for i in range(codebook.get_barcode_count())]),
+            fov=fragmentIndex)
+        self.dataSet.save_numpy_analysis_result(
+            refactors, 'scale_refactors', self.analysisName,
+            resultIndex=fragmentIndex)
+        self.dataSet.save_numpy_analysis_result(
+            backgrounds, 'background_refactors', self.analysisName,
+            resultIndex=fragmentIndex)
+        self.dataSet.save_numpy_analysis_result(
+            barcodesSeen, 'barcode_counts', self.analysisName,
+            resultIndex=fragmentIndex)
+
+    def _get_previous_scale_factors(self, fragmentIndex) -> np.ndarray:
+        if 'previous_iteration' not in self.parameters:
+            scaleFactors = self._calculate_initial_scale_factors()
+        else:
+            previousIteration = self.dataSet.load_analysis_task(
+                self.parameters['previous_iteration'])
+            scaleFactors = previousIteration.get_scale_factors(fragmentIndex)
+
+        return scaleFactors
+
+    def _get_previous_backgrounds(self, fragmentIndex) -> np.ndarray:
+        if 'previous_iteration' not in self.parameters:
+            backgrounds = np.zeros(self.get_codebook().get_bit_count())
+        else:
+            previousIteration = self.dataSet.load_analysis_task(
+                self.parameters['previous_iteration'])
+            backgrounds = previousIteration.get_backgrounds(fragmentIndex)
+        return backgrounds
+
+    def get_scale_factors(self, fragmentIndex) -> np.ndarray:
+        """Get the final, optimized scale factors.
+
+        Returns:
+            a one-dimensional numpy array where the i'th entry is the
+            scale factor corresponding to the i'th bit.
+        """
+        if not self.is_complete():
+            raise Exception('Analysis is still running. Unable to get scale '
+                            + 'factors.')
+        try:
+            return self.dataSet.load_numpy_analysis_result(
+                'scale_factors', self.analysisName, resultIndex=fragmentIndex)
+        
+        # OSError and ValueError are raised if the previous file is not
+        # completely written
+        except (FileNotFoundError, OSError, ValueError):
+            refactors = self.dataSet.load_numpy_analysis_result(
+                    'scale_refactors', self.analysisName, resultIndex=fragmentIndex)
+
+            # Don't rescale bits that were never seen
+            refactors[refactors == 0] = 1
+
+            previousFactors = self.dataSet.load_numpy_analysis_result(
+                'previous_scale_factors', self.analysisName, resultIndex=fragmentIndex)
+
+            scaleFactors = refactors * previousFactors
+
+            # in case there are nans?
+            scaleFactors[scaleFactors == np.nan] = previousFactors[scaleFactors == np.nan]
+
+            self.dataSet.save_numpy_analysis_result(
+                scaleFactors, 'scale_factors', self.analysisName,
+                resultIndex=fragmentIndex)
+
+            return scaleFactors
+
+    def get_backgrounds(self, fragmentIndex) -> np.ndarray:
+        if not self.is_complete():
+            raise Exception('Analysis is still running. Unable to get ' +
+                            'backgrounds.')
+
+        try:
+            return self.dataSet.load_numpy_analysis_result(
+                'backgrounds', self.analysisName, resultIndex=fragmentIndex)
+        # OSError and ValueError are raised if the previous file is not
+        # completely written
+        except (FileNotFoundError, OSError, ValueError):
+            refactors = self.dataSet.load_numpy_analysis_result(
+                    'background_refactors', self.analysisName, resultIndex=fragmentIndex)
+
+            previousBackgrounds = self.dataSet.load_numpy_analysis_result(
+                    'previous_backgrounds', self.analysisName, resultIndex=fragmentIndex)
+
+            previousFactors = self.dataSet.load_numpy_analysis_result(
+                'previous_scale_factors', self.analysisName, resultIndex=fragmentIndex)
+
+            backgrounds = np.add(previousBackgrounds, np.multiply(refactors, previousFactors))
+
+            # in case there are nans?
+            backgrounds[backgrounds == np.nan] = previousFactors[backgrounds == np.nan]
+
+            self.dataSet.save_numpy_analysis_result(
+                backgrounds, 'backgrounds', self.analysisName,
+                resultIndex=fragmentIndex)
+
+            return backgrounds
+
+    def get_scale_factor_history(self, fragmentIndex) -> np.ndarray:
+        """Get the scale factors cached for each iteration of the optimization.
+
+        Returns:
+            a two-dimensional numpy array where the i,j'th entry is the
+            scale factor corresponding to the i'th bit in the j'th
+            iteration.
+        """
+        if 'previous_iteration' not in self.parameters:
+            return np.array([self.get_scale_factors(fragmentIndex)])
+        else:
+            previousHistory = self.dataSet.load_analysis_task(
+                self.parameters['previous_iteration']
+            ).get_scale_factor_history(fragmentIndex)
+            return np.append(
+                previousHistory, [self.get_scale_factors(fragmentIndex)], axis=0)
+
+    def get_barcode_count_history(self, fragmentIndex) -> np.ndarray:
+        """Get the set of barcode counts for each iteration of the
+        optimization.
+
+        Returns:
+            a two-dimensional numpy array where the i,j'th entry is the
+            barcode count corresponding to the i'th barcode in the j'th
+            iteration.
+        """
+        countsMean = self.dataSet.load_numpy_analysis_result(
+            'barcode_counts', self.analysisName, resultIndex=fragmentIndex)
+
+        if 'previous_iteration' not in self.parameters:
+            return np.array([countsMean])
+        else:
+            previousHistory = self.dataSet.load_analysis_task(
+                self.parameters['previous_iteration']
+            ).get_barcode_count_history(fragmentIndex)
             return np.append(previousHistory, [countsMean], axis=0)

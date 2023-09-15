@@ -66,6 +66,10 @@ class Decode(BarcodeSavingParallelAnalysisTask):
                 self.parameters['z_duplicate_zPlane_threshold'] = 1
             if 'z_duplicate_xy_pixel_threshold' not in self.parameters:
                 self.parameters['z_duplicate_xy_pixel_threshold'] = np.sqrt(2)
+        
+        if "single_fov_optimization" not in self.parameters:
+            self.parameters['single_fov_optimization'] = False
+
 
         self.cropWidth = self.parameters['crop_width']
         self.imageSize = dataSet.get_image_dimensions()
@@ -105,8 +109,15 @@ class Decode(BarcodeSavingParallelAnalysisTask):
 
         codebook = self.get_codebook()
         decoder = decoding.PixelBasedDecoder(codebook)
-        scaleFactors = optimizeTask.get_scale_factors()
-        backgrounds = optimizeTask.get_backgrounds()
+
+        # for single FOV optimization
+        if self.parameters['single_fov_optimization']:
+            scaleFactors = optimizeTask.get_scale_factors(fragmentIndex)
+            backgrounds = optimizeTask.get_backgrounds(fragmentIndex)
+        else:
+            scaleFactors = optimizeTask.get_scale_factors()
+            backgrounds = optimizeTask.get_backgrounds()
+        
         chromaticCorrector = optimizeTask.get_chromatic_corrector()
 
         zPositionCount = len(self.dataSet.get_z_positions())
@@ -246,3 +257,4 @@ class Decode(BarcodeSavingParallelAnalysisTask):
             self.parameters['z_duplicate_xy_pixel_threshold'],
             self.dataSet.get_z_positions())
         return bc
+
