@@ -114,7 +114,7 @@ class SpatialFeature(object):
         transformedList = []
         for b in boundaries:
             reshapedBoundaries = np.reshape(
-                b, (1, b.shape[0], 2)).astype(np.float)
+                b, (1, b.shape[0], 2)).astype(float) # np.float depreciation warning
             transformedBoundaries = cv2.transform(
                 reshapedBoundaries, transformationMatrix)[0, :, :2]
             transformedList.append(transformedBoundaries)
