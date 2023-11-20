@@ -202,8 +202,9 @@ class CellPoseSegment(FeatureSavingAnalysisTask):
                                 segmentationZ1: np.ndarray,
                                 n0: int,
                                 fraction_threshold0: float=0.2,
-                                fraction_threshold1: float=0.2) -> Tuple[np.float64, 
-                                                  np.float64, np.float64]:
+                                fraction_threshold1: float=0.2) -> Tuple['float64', 
+                                                                    'float64',
+                                                                    'float64']:
         """compare cell labels in adjacent image masks
         Args:
             segmentationZ0: a 2 dimensional numpy array containing a
@@ -349,7 +350,7 @@ class CellPoseSegment(FeatureSavingAnalysisTask):
         '''Save a stack of images as a tiff file.'''
         with self.dataSet.writer_for_analysis_images(self, filename_prefix, fov) as outputTif:
              for i in range(image_stack.shape[0]):
-                    outputTif.save(image_stack[i].astype(np.float32),
+                    outputTif.save(image_stack[i].astype('float32'),
                                    photometric='MINISBLACK',
                                    contiguous=True)
 
@@ -510,8 +511,9 @@ class CellPoseSegmentSingleChannel(FeatureSavingAnalysisTask):
                                 segmentationZ1: np.ndarray,
                                 n0: int,
                                 fraction_threshold0: float=0.2,
-                                fraction_threshold1: float=0.2) -> Tuple[np.float64, 
-                                                  np.float64, np.float64]:
+                                fraction_threshold1: float=0.2) -> Tuple['float64', 
+                                                                         'float64',
+                                                                         'float64']:
         """compare cell labels in adjacent image masks
         Args:
             segmentationZ0: a 2 dimensional numpy array containing a
@@ -625,7 +627,7 @@ class CellPoseSegmentSingleChannel(FeatureSavingAnalysisTask):
         '''Save a stack of images as a tiff file.'''
         with self.dataSet.writer_for_analysis_images(self, filename_prefix, fov) as outputTif:
              for i in range(image_stack.shape[0]):
-                    outputTif.save(image_stack[i].astype(np.float32),
+                    outputTif.save(image_stack[i].astype('float32'),
                                    photometric='MINISBLACK',
                                    contiguous=True)
 

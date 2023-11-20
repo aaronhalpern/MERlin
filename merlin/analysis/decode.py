@@ -123,10 +123,10 @@ class Decode(BarcodeSavingParallelAnalysisTask):
         zPositionCount = len(self.dataSet.get_z_positions())
         bitCount = codebook.get_bit_count()
         imageShape = self.dataSet.get_image_dimensions()
-        decodedImages = np.zeros((zPositionCount, *imageShape), dtype=np.int16)
+        decodedImages = np.zeros((zPositionCount, *imageShape), dtype='int16')
         magnitudeImages = np.zeros((zPositionCount, *imageShape),
-                                   dtype=np.float32)
-        distances = np.zeros((zPositionCount, *imageShape), dtype=np.float32)
+                                   dtype='float32')
+        distances = np.zeros((zPositionCount, *imageShape), dtype='float32')
 
         if not decode3d:
             for zIndex in range(zPositionCount):
@@ -144,12 +144,12 @@ class Decode(BarcodeSavingParallelAnalysisTask):
                 if self.parameters['memory_map']:
                     normalizedPixelTraces = np.memmap(
                         os.path.join(tempDirectory, 'pixel_traces.dat'),
-                        mode='w+', dtype=np.float32,
+                        mode='w+', dtype='float32',
                         shape=(zPositionCount, bitCount, *imageShape))
                 else:
                     normalizedPixelTraces = np.zeros(
                         (zPositionCount, bitCount, *imageShape),
-                        dtype=np.float32)
+                        dtype='float32')
 
                 for zIndex in range(zPositionCount):
                     imageSet = preprocessTask.get_processed_image_set(
@@ -221,15 +221,15 @@ class Decode(BarcodeSavingParallelAnalysisTask):
             with self.dataSet.writer_for_analysis_images(
                     self, 'decoded', fov) as outputTif:
                 for i in range(zPositionCount):
-                    outputTif.save(decodedImages[i].astype(np.float32),
+                    outputTif.save(decodedImages[i].astype('float32'),
                                    photometric='MINISBLACK',
                                    contiguous=True,
                                    metadata=imageDescription)
-                    outputTif.save(magnitudeImages[i].astype(np.float32),
+                    outputTif.save(magnitudeImages[i].astype('float32'),
                                    photometric='MINISBLACK',
                                    contiguous=True,
                                    metadata=imageDescription)
-                    outputTif.save(distanceImages[i].astype(np.float32),
+                    outputTif.save(distanceImages[i].astype('float32'),
                                    photometric='MINISBLACK',
                                    contiguous=True,
                                    metadata=imageDescription)

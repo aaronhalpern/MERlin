@@ -90,7 +90,7 @@ class PixelBasedDecoder(object):
         if backgrounds is None:
             backgrounds = self._backgrounds
 
-        filteredImages = np.zeros(imageData.shape, dtype=np.float32)
+        filteredImages = np.zeros(imageData.shape, dtype='float32')
         filterSize = int(2 * np.ceil(2 * lowPassSigma) + 1)
         for i in range(imageData.shape[0]):
             filteredImages[i, :, :] = cv2.GaussianBlur(
@@ -104,7 +104,7 @@ class PixelBasedDecoder(object):
                                                    backgrounds)]))
 
         pixelMagnitudes = np.array(
-            [np.linalg.norm(x) for x in scaledPixelTraces], dtype=np.float32)
+            [np.linalg.norm(x) for x in scaledPixelTraces], dtype='float32')
         pixelMagnitudes[pixelMagnitudes == 0] = 1
 
         normalizedPixelTraces = scaledPixelTraces/pixelMagnitudes[:, None]
