@@ -40,7 +40,7 @@ def remove_zplane_duplicates_all_barcodeids(barcodes: pd.DataFrame,
             bcToKeep.append(
                 remove_zplane_duplicates_single_barcodeid(bcData, zPlanes,
                                                           maxDist, allZPos))
-        mergedBC = pd.concat(bcToKeep, 0).reset_index(drop=True)
+        mergedBC = pd.concat(bcToKeep, axis = 0).reset_index(drop=True)
         mergedBC = mergedBC.sort_values(by=['barcode_id', 'z'])
         return mergedBC
 
