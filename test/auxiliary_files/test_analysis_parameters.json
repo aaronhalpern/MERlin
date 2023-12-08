@@ -97,17 +97,6 @@
             }
         },
         {
-            "task": "PlotPerformance",
-            "module": "merlin.analysis.plotperformance",
-            "parameters": {
-                "preprocess_task": "DeconvolutionPreprocess",
-                "optimize_task": "Optimize2",
-                "decode_task": "Decode",
-                "filter_task": "AdaptiveFilterBarcodes",
-                "global_align_task": "SimpleGlobalAlignment"
-            }
-        },
-        {
             "task": "WatershedSegment",
             "module": "merlin.analysis.segment",
             "parameters": {
