@@ -171,6 +171,9 @@ class SumSignalMERFISHSpots(SumSignal):
         if 'segment_task' not in self.parameters:
             self.parameters['segment_task'] = None
 
+        if 'save_sequential_images' not in self.parameters:
+            self.parameters['save_sequential_images'] = False
+
     def get_dependencies(self):
         return [self.parameters['warp_task'],
                 self.parameters['global_align_task']
