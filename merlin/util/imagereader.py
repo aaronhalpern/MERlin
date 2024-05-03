@@ -2,6 +2,7 @@ import hashlib
 import numpy as np
 import re
 import tifffile
+import zarr
 from typing import List
 
 from merlin.util import dataportal
@@ -47,6 +48,13 @@ def infer_reader(filePortal: dataportal.FilePortal, verbose: bool = False):
             return TifReader(filePortal._fileName, verbose=verbose)
         else:
             raise IOError('Loading tiff files from %s is not yet implemented'
+                          % type(filePortal))
+    elif ext == ".zarr":
+        if isinstance(filePortal, dataportal.LocalFilePortal):
+            # TODO implement zarr reading from s3/gcloud
+            return ZarrReader(filePortal._fileName, verbose=verbose)
+        else:
+            raise IOError('Loading zarr files from %s is not yet implemented'
                           % type(filePortal))
     raise IOError(
         "only .dax and .tif are supported (case sensitive..)")
@@ -374,4 +382,32 @@ class TifReader(Reader):
         if cast_to_int16:
             image_data = image_data.astype(np.uint16)
 
+        return image_data
+
+
+class ZarrReader(Reader):
+    """
+    Zarr reader class. https://zarr.readthedocs.io/en/stable/index.html
+    Experimental class
+    """
+    def __init__(self, filename, verbose=False):
+            super().__init__(filename, verbose)
+
+            self.zarr = zarr.open(filename, mode = 'r')
+
+            # assume that the image data is stored in an array named "data"
+            self.number_frames = self.zarr['data'].shape[0]
+            self.image_width = self.zarr['data'].shape[1]
+            self.image_height = self.zarr['data'].shape[2]
+
+    def load_frame(self, frame_number):
+        """
+        Load a frame & return it as a np array.
+        """
+        super().load_frame(frame_number)
+
+        image_data = self.zarr['data'][frame_number]
+        image_data = np.reshape(image_data,
+                                [self.image_height,
+                                 self.image_width])
         return image_data
