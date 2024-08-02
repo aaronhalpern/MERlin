@@ -86,6 +86,7 @@ def deconvolve_lucyrichardson(image: np.ndarray,
     Returns:
         the deconvolved image
     """
+    image = image.astype(np.float32) # otherwise cv2 error: src1 data type = 23 is not supported?
     eps = np.finfo(float).eps
     Y = np.copy(image)
     J1 = np.copy(image)
