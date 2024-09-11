@@ -48,7 +48,8 @@ class PixelBasedDecoder(object):
                       backgrounds: np.ndarray=None,
                       distanceThreshold: float=0.5176,
                       magnitudeThreshold: float=1,
-                      lowPassSigma: float=1):
+                      lowPassSigma: float=1,
+                      decodeMask = None):
         """Assign barcodes to the pixels in the provided image stock.
 
         Each pixel is assigned to the nearest barcode from the codebook if
@@ -96,39 +97,60 @@ class PixelBasedDecoder(object):
             filteredImages[i, :, :] = cv2.GaussianBlur(
                 imageData[i, :, :], (filterSize, filterSize), lowPassSigma)
 
-        pixelTraces = np.reshape(
-                filteredImages, 
-                (filteredImages.shape[0], np.prod(filteredImages.shape[1:])))
-        scaledPixelTraces = np.transpose(
-                np.array([(p-b)/s for p, s, b in zip(pixelTraces, scaleFactors,
-                                                   backgrounds)]))
+        # going to try to make this more numpy-ish
+        # and add decode mask parameter 
 
-        pixelMagnitudes = np.array(
-            [np.linalg.norm(x) for x in scaledPixelTraces], dtype='float32')
-        pixelMagnitudes[pixelMagnitudes == 0] = 1
+        image_shape = filteredImages.shape[1:] # dimensions of one image plane
 
-        normalizedPixelTraces = scaledPixelTraces/pixelMagnitudes[:, None]
+        scaledPixelTraces = ((filteredImages-backgrounds[:,None,None])/scaleFactors[:,None,None]).astype(np.float32)
+        pixelMagnitudes = np.linalg.norm(scaledPixelTraces, axis = 0).astype(np.float32)
+        pixelMagnitudes[pixelMagnitudes == 0] = 1.0
+        normalizedPixelTraces = scaledPixelTraces/pixelMagnitudes # this should be a float32 to save a little mem
 
         neighbors = NearestNeighbors(n_neighbors=1, algorithm='ball_tree')
         neighbors.fit(self._decodingMatrix)
 
-        distances, indexes = neighbors.kneighbors(
-                normalizedPixelTraces, return_distance=True)
+        if decodeMask is None: # decode the full image
 
-        decodedImage = np.reshape(
-            np.array([i[0] if d[0] <= distanceThreshold else -1
-                      for i, d in zip(indexes, distances)], dtype=np.int16),
-            filteredImages.shape[1:])
+            # pass in num_pix x num_bits array
+            distances, indexes = neighbors.kneighbors(
+                    normalizedPixelTraces.reshape(normalizedPixelTraces.shape[0], -1).T,
+                    return_distance=True)
+        
+            # remove index that are greater than distance threshold
+            indexes[distances > distanceThreshold] = -1
 
-        pixelMagnitudes = np.reshape(pixelMagnitudes, filteredImages.shape[1:])
-        normalizedPixelTraces = np.moveaxis(normalizedPixelTraces, 1, 0)
-        normalizedPixelTraces = np.reshape(
-                normalizedPixelTraces, filteredImages.shape)
-        distances = np.reshape(distances, filteredImages.shape[1:])
+            # turn the filtered indexes back into the decoded image and do the magnitude filter
+            decodedImage = indexes.reshape(image_shape).astype(np.int16)
+            decodedImage[pixelMagnitudes < magnitudeThreshold] = -1
 
-        decodedImage[pixelMagnitudes < magnitudeThreshold] = -1
+            # reshape the distance image
+            distanceImage = distances.reshape(image_shape).astype(np.float32)
 
-        return decodedImage, pixelMagnitudes, normalizedPixelTraces, distances
+        else: # decode using a mask
+
+            mask = decodeMask > 0 # binarize it just in case
+
+            # only take pixels that are in the mask
+            normalizedPixelTracesToDecode = np.array(
+                [frame[mask] for frame in normalizedPixelTraces]).T
+
+            distances, indexes = neighbors.kneighbors(
+                    normalizedPixelTracesToDecode,
+                    return_distance=True)
+        
+            # remove index that are greater than distance threshold
+            indexes[distances > distanceThreshold] = -1
+
+            decodedImage = np.full(image_shape, -1, dtype = np.int16)
+            decodedImage[mask] = indexes.flatten()
+            decodedImage[pixelMagnitudes < magnitudeThreshold] = -1
+
+            # reshape the distance image
+            distanceImage = np.full(image_shape, -1, dtype = np.float32)
+            distanceImage[mask] = distances.flatten()
+
+        return decodedImage, pixelMagnitudes, normalizedPixelTraces, distanceImage
 
     def extract_barcodes_with_index(
             self, barcodeIndex: int, decodedImage: np.ndarray,

@@ -911,17 +911,20 @@ class ImageDataSet(DataSet):
         return sorted(self.rawDataPortal.list_files(
             extensionList=['.dax', '.tif', '.tiff', '.zar', '.zarr']))
 
-    def load_image(self, imagePath, frameIndex):
+    def load_image(self, imagePath, frameIndex, transform = True):
         with imagereader.infer_reader(
                 self.rawDataPortal.open_file(imagePath)) as reader:
             imageIn = reader.load_frame(int(frameIndex))
-            if self.transpose:
-                imageIn = np.transpose(imageIn)
-            if self.flipHorizontal:
-                imageIn = np.flip(imageIn, axis=1)
-            if self.flipVertical:
-                imageIn = np.flip(imageIn, axis=0)
-            return imageIn 
+            if transform:
+                if self.transpose:
+                    imageIn = np.transpose(imageIn)
+                if self.flipHorizontal:
+                    imageIn = np.flip(imageIn, axis=1)
+                if self.flipVertical:
+                    imageIn = np.flip(imageIn, axis=0)
+                return imageIn
+            else: # don't apply camera transformation to some images
+                return imageIn
 
     def image_stack_size(self, imagePath):
         """

@@ -67,8 +67,12 @@ class Decode(BarcodeSavingParallelAnalysisTask):
             if 'z_duplicate_xy_pixel_threshold' not in self.parameters:
                 self.parameters['z_duplicate_xy_pixel_threshold'] = np.sqrt(2)
         
+        # special case where every FOV was optimized
         if "single_fov_optimization" not in self.parameters:
             self.parameters['single_fov_optimization'] = False
+        # only decode in segmentation mask
+        if 'use_segmentation_mask' not in self.parameters:
+            self.parameters['use_segmentation_mask'] = False
 
 
         self.cropWidth = self.parameters['crop_width']
@@ -87,7 +91,8 @@ class Decode(BarcodeSavingParallelAnalysisTask):
         dependencies = [self.parameters['preprocess_task'],
                         self.parameters['optimize_task'],
                         self.parameters['global_align_task']]
-
+        if self.parameters['use_segmentation_mask']:
+            dependencies += [self.parameters['use_segmentation_mask']]
         return dependencies
 
     def get_codebook(self) -> Codebook:
@@ -193,6 +198,11 @@ class Decode(BarcodeSavingParallelAnalysisTask):
             bcDB.empty_database(fragmentIndex)
             bcDB.write_barcodes(bc, fov=fragmentIndex)
 
+    # used to load in the segmentation mask
+    def _get_segmentation_mask(self, fovIndex, zIndex):
+        segmentTask = self.dataSet.load_analysis_task(
+            self.parameters['use_segmentation_mask'])
+        return segmentTask._load_mask_image(fovIndex, zIndex)
 
     def _process_independent_z_slice(
             self, fov: int, zIndex: int, chromaticCorrector, scaleFactors,
@@ -203,10 +213,23 @@ class Decode(BarcodeSavingParallelAnalysisTask):
         imageSet = imageSet.reshape(
             (imageSet.shape[0], imageSet.shape[-2], imageSet.shape[-1]))
 
-        di, pm, npt, d = decoder.decode_pixels(
-            imageSet, scaleFactors, backgrounds,
-            lowPassSigma=self.parameters['lowpass_sigma'],
-            distanceThreshold=self.parameters['distance_threshold'])
+        if self.parameters['use_segmentation_mask']:
+
+            decodeMask = self._get_segmentation_mask(fov, zIndex)
+
+            di, pm, npt, d = decoder.decode_pixels(
+                imageSet, scaleFactors, backgrounds,
+                lowPassSigma=self.parameters['lowpass_sigma'],
+                distanceThreshold=self.parameters['distance_threshold'],
+                decodeMask = decodeMask)
+        
+        else: # standard full fov decode
+
+            di, pm, npt, d = decoder.decode_pixels(
+                imageSet, scaleFactors, backgrounds,
+                lowPassSigma=self.parameters['lowpass_sigma'],
+                distanceThreshold=self.parameters['distance_threshold'])
+            
         self._extract_and_save_barcodes(
             decoder, di, pm, npt, d, fov, zIndex)
 

@@ -202,9 +202,9 @@ class CellPoseSegment(FeatureSavingAnalysisTask):
                                 segmentationZ1: np.ndarray,
                                 n0: int,
                                 fraction_threshold0: float=0.2,
-                                fraction_threshold1: float=0.2) -> Tuple['float64', 
-                                                                    'float64',
-                                                                    'float64']:
+                                fraction_threshold1: float=0.2) -> Tuple[float, 
+                                                                    float,
+                                                                    float]:
         """compare cell labels in adjacent image masks
         Args:
             segmentationZ0: a 2 dimensional numpy array containing a
@@ -511,9 +511,9 @@ class CellPoseSegmentSingleChannel(FeatureSavingAnalysisTask):
                                 segmentationZ1: np.ndarray,
                                 n0: int,
                                 fraction_threshold0: float=0.2,
-                                fraction_threshold1: float=0.2) -> Tuple['float64', 
-                                                                         'float64',
-                                                                         'float64']:
+                                fraction_threshold1: float=0.2) -> Tuple[float, 
+                                                                         float,
+                                                                         float]:
         """compare cell labels in adjacent image masks
         Args:
             segmentationZ0: a 2 dimensional numpy array containing a
@@ -784,6 +784,16 @@ class CellPoseSegmentSingleChannel3D(FeatureSavingAnalysisTask):
                     outputTif.save(frame,
                                    photometric='MINISBLACK',
                                    contiguous=True)
+
+    ###
+    # make a reader for segmented masks
+    # is this the best place to do this?
+    # probably should be in dataset...
+    # note we need to load a zIndex not a frameIndex or a zPosition
+    def _load_mask_image(self, fov, zIndex, filename_prefix = 'segmented_mask'):
+        imagePath = self.dataSet._analysis_image_name(self, filename_prefix, fov)
+        return self.dataSet.load_image(imagePath, zIndex, transform = False)
+    ###
 
     def _run_analysis(self, fragmentIndex):
 

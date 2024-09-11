@@ -70,7 +70,13 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
                 size = self.parameters['fov_per_iteration'])
                 
             self.parameters['fov_index'] = [[int(fov),int(ind)] for fov, ind in zip(fovIndex, zIndex)]
-    
+        # add parameter to only optimize inside the segmentation mask:
+        # probably only do this with cellpose 3D class
+        # specify the segment task to use
+        if 'use_segmentation_mask' not in self.parameters:
+            self.parameters['use_segmentation_mask'] = False
+
+
     def get_estimated_memory(self):
         return 4000
 
@@ -82,6 +88,8 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
                         self.parameters['warp_task']]
         if 'previous_iteration' in self.parameters:
             dependencies += [self.parameters['previous_iteration']]
+        if self.parameters['use_segmentation_mask']:
+            dependencies += [self.parameters['use_segmentation_mask']]
         return dependencies
 
     def fragment_count(self):
@@ -91,6 +99,13 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
         preprocessTask = self.dataSet.load_analysis_task(
             self.parameters['preprocess_task'])
         return preprocessTask.get_codebook()
+    
+    # used to load in the segmentation mask
+    def get_segmentation_mask(self, fovIndex, zIndex):
+        segmentTask = self.dataSet.load_analysis_task(
+            self.parameters['use_segmentation_mask'])
+        #downsample_factor = segmentTask.parameters['downsample_factor'] # not necessary
+        return segmentTask._load_mask_image(fovIndex, zIndex)
 
     def _run_analysis(self, fragmentIndex):
         preprocessTask = self.dataSet.load_analysis_task(
@@ -125,9 +140,15 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
         decoder = decoding.PixelBasedDecoder(codebook)
         areaThreshold = self.parameters['area_threshold']
         decoder.refactorAreaThreshold = areaThreshold
-        di, pm, npt, d = decoder.decode_pixels(warpedImages, scaleFactors,
-                                               backgrounds)
-
+        
+        if self.parameters['use_segmentation_mask']: # masked decode
+            mask = self.get_segmentation_mask(fovIndex, zIndex)
+            di, pm, npt, d = decoder.decode_pixels(warpedImages, scaleFactors,
+                                                backgrounds, decodeMask = mask)
+        else: # standard decode
+            di, pm, npt, d = decoder.decode_pixels(warpedImages, scaleFactors,
+                                                backgrounds)
+            
         refactors, backgrounds, barcodesSeen = \
             decoder.extract_refactors(
                 di, pm, npt, extractBackgrounds=self.parameters[
@@ -202,7 +223,8 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
 
     def _get_previous_chromatic_transformations(self)\
             -> Dict[str, Dict[str, transform.SimilarityTransform]]:
-            
+        
+        # I believe this should only apply for the first optimization round where previous is not specified
         if 'previous_iteration' not in self.parameters:
             usedColors = self._get_used_colors()
             return {u: {v: transform.SimilarityTransform()
@@ -223,7 +245,8 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
                     chromaticTransformations, 'chromatic_corrections', self.analysisName)
                     
             return chromaticTransformations
-            
+        
+        # this is a time consuming step... see above
         else:
             previousIteration = self.dataSet.load_analysis_task(
                 self.parameters['previous_iteration'])
