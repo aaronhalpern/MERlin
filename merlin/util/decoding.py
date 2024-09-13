@@ -144,8 +144,24 @@ class PixelBasedDecoder(object):
                         normalizedPixelTraces.reshape(normalizedPixelTraces.shape[0], -1).T,
                         return_distance=True)
             else: # gpu decode here
-                distances, indexes = calculate_distances_gpu(normalizedPixelTraces.reshape(normalizedPixelTraces.shape[0], -1),
-                                                         self._decodingMatrixdecodingMatrix)
+
+                # hard coding some numbers here be carefule
+                step = 256*256
+                start = 0
+                stop = np.prod(normalizedPixelTraces.shape[1:])
+                normalizedPixelTraces_flat = normalizedPixelTraces.reshape(normalizedPixelTraces.shape[0], -1)
+
+                distances = []
+                indexes = []
+                for idx in range(start, stop, step):
+                    pixels_to_decode = normalizedPixelTraces_flat[:,idx:idx+step]           
+                    ds, inds = calculate_distances_gpu(pixels_to_decode.T,                 # does this need transpose????
+                                                    self._decodingMatrixdecodingMatrix)
+                    distances.append(ds)
+                    indexes.append(inds)
+
+                distances = np.array(distances.flatten)
+                indexes = np.array(indexes.flatten)
 
             # remove index that are greater than distance threshold
             indexes[distances > distanceThreshold] = -1
