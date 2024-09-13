@@ -9,6 +9,12 @@ from sklearn.neighbors import NearestNeighbors
 from merlin.util import binary
 from merlin.data import codebook as mcodebook
 
+
+# try to enable GPU decoding
+import cupy as cp
+from cupyx.scipy.spatial.distance import cdist
+import gc
+
 """
 Utility functions for pixel based decoding.
 """
@@ -21,6 +27,24 @@ def normalize(x):
     else:
         return x
 
+# gpu nearest neighbor
+def calculate_distances_gpu(pixel_traces, codebook_matrix):
+  
+        if isinstance(pixel_traces, np.ndarray):
+            pixel_traces = cp.asarray(pixel_traces,dtype=cp.float32)
+        if isinstance(codebook_matrix, np.ndarray):
+            codebook_matrix = cp.asarray(codebook_matrix,dtype=cp.float32)
+        
+        distances = cdist(cp.ascontiguousarray(pixel_traces),cp.ascontiguousarray(codebook_matrix), metric='euclidean')
+        #distances = cdist(cp.ascontiguousarray(pixel_traces.T),cp.ascontiguousarray(codebook_matrix), metric='euclidean')
+        min_indices = cp.argmin(distances, axis=1)
+        min_distances = cp.min(distances, axis=1)
+
+        del pixel_traces, codebook_matrix
+        gc.collect()
+        cp.get_default_memory_pool().free_all_blocks()
+        
+        return cp.asnumpy(min_distances), cp.asnumpy(min_indices)
 
 class PixelBasedDecoder(object):
 
@@ -49,7 +73,8 @@ class PixelBasedDecoder(object):
                       distanceThreshold: float=0.5176,
                       magnitudeThreshold: float=1,
                       lowPassSigma: float=1,
-                      decodeMask = None):
+                      decodeMask = None,
+                      use_gpu = False):
         """Assign barcodes to the pixels in the provided image stock.
 
         Each pixel is assigned to the nearest barcode from the codebook if
@@ -113,10 +138,15 @@ class PixelBasedDecoder(object):
         if decodeMask is None: # decode the full image
 
             # pass in num_pix x num_bits array
-            distances, indexes = neighbors.kneighbors(
-                    normalizedPixelTraces.reshape(normalizedPixelTraces.shape[0], -1).T,
-                    return_distance=True)
-        
+
+            if use_gpu == False:
+                distances, indexes = neighbors.kneighbors(
+                        normalizedPixelTraces.reshape(normalizedPixelTraces.shape[0], -1).T,
+                        return_distance=True)
+            else: # gpu decode here
+                distances, indexes = calculate_distances_gpu(normalizedPixelTraces.reshape(normalizedPixelTraces.shape[0], -1),
+                                                         self._decodingMatrixdecodingMatrix)
+
             # remove index that are greater than distance threshold
             indexes[distances > distanceThreshold] = -1
 
@@ -135,9 +165,13 @@ class PixelBasedDecoder(object):
             normalizedPixelTracesToDecode = np.array(
                 [frame[mask] for frame in normalizedPixelTraces]).T
 
-            distances, indexes = neighbors.kneighbors(
-                    normalizedPixelTracesToDecode,
-                    return_distance=True)
+            if use_gpu == False:
+                distances, indexes = neighbors.kneighbors(
+                        normalizedPixelTracesToDecode,
+                        return_distance=True)
+            else: # gpu decode here
+                distances, indexes = calculate_distances_gpu(normalizedPixelTraces.reshape(normalizedPixelTraces.shape[0], -1),
+                                                         self._decodingMatrixdecodingMatrix)
         
             # remove index that are greater than distance threshold
             indexes[distances > distanceThreshold] = -1

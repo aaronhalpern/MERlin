@@ -74,6 +74,9 @@ class Decode(BarcodeSavingParallelAnalysisTask):
         if 'use_segmentation_mask' not in self.parameters:
             self.parameters['use_segmentation_mask'] = False
 
+        # gpu decoding
+        if 'use_gpu' not in self.parameters:
+            self.parameters['use_gpu'] = False
 
         self.cropWidth = self.parameters['crop_width']
         self.imageSize = dataSet.get_image_dimensions()
@@ -213,22 +216,16 @@ class Decode(BarcodeSavingParallelAnalysisTask):
         imageSet = imageSet.reshape(
             (imageSet.shape[0], imageSet.shape[-2], imageSet.shape[-1]))
 
+        decodeMask = None
         if self.parameters['use_segmentation_mask']:
-
             decodeMask = self._get_segmentation_mask(fov, zIndex)
 
-            di, pm, npt, d = decoder.decode_pixels(
-                imageSet, scaleFactors, backgrounds,
-                lowPassSigma=self.parameters['lowpass_sigma'],
-                distanceThreshold=self.parameters['distance_threshold'],
-                decodeMask = decodeMask)
-        
-        else: # standard full fov decode
-
-            di, pm, npt, d = decoder.decode_pixels(
-                imageSet, scaleFactors, backgrounds,
-                lowPassSigma=self.parameters['lowpass_sigma'],
-                distanceThreshold=self.parameters['distance_threshold'])
+        di, pm, npt, d = decoder.decode_pixels(
+            imageSet, scaleFactors, backgrounds,
+            lowPassSigma=self.parameters['lowpass_sigma'],
+            distanceThreshold=self.parameters['distance_threshold'],
+            decodeMask = decodeMask,
+            use_gpu = self.parameters['use_gpu'])
             
         self._extract_and_save_barcodes(
             decoder, di, pm, npt, d, fov, zIndex)

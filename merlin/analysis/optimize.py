@@ -76,6 +76,10 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
         if 'use_segmentation_mask' not in self.parameters:
             self.parameters['use_segmentation_mask'] = False
 
+        # gpu decoding
+        if 'use_gpu' not in self.parameters:
+            self.parameters['use_gpu'] = False
+
 
     def get_estimated_memory(self):
         return 4000
@@ -141,13 +145,15 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
         areaThreshold = self.parameters['area_threshold']
         decoder.refactorAreaThreshold = areaThreshold
         
+        decodeMask = None
         if self.parameters['use_segmentation_mask']: # masked decode
-            mask = self.get_segmentation_mask(fovIndex, zIndex)
-            di, pm, npt, d = decoder.decode_pixels(warpedImages, scaleFactors,
-                                                backgrounds, decodeMask = mask)
-        else: # standard decode
-            di, pm, npt, d = decoder.decode_pixels(warpedImages, scaleFactors,
-                                                backgrounds)
+            decodeMask = self.get_segmentation_mask(fovIndex, zIndex)
+            
+        di, pm, npt, d = decoder.decode_pixels(warpedImages,
+                                            scaleFactors,
+                                            backgrounds,
+                                            decodeMask = decodeMask,
+                                            use_gpu = self.parameters['use_gpu'])
             
         refactors, backgrounds, barcodesSeen = \
             decoder.extract_refactors(
