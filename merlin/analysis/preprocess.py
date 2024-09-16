@@ -111,14 +111,14 @@ class CAREPreprocess(Preprocess):
     def _preprocess_image(self, inputImage: np.ndarray) -> np.ndarray:
         outputImage = self.model.predict(inputImage, 'YX')
         outputImage = self._high_pass_filter(outputImage)
-        return outputImage.astype(np.uint16) # is this smart to return np.uint16?
+        return outputImage.astype(np.float32) # switching back to float32 will it eat up memory?
         
     def _high_pass_filter(self, inputImage: np.ndarray) -> np.ndarray:
         highPassFilterSize = int(2 * np.ceil(2 * self._highPassSigma) + 1)
         hpImage = imagefilters.high_pass_filter(inputImage,
                                                 highPassFilterSize,
                                                 self._highPassSigma)
-        return hpImage.astype('float16')
+        return hpImage #.astype(np.float32) # does this need to be cast?
     
     def _run_analysis(self, fragmentIndex):
     

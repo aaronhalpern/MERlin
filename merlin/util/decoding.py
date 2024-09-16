@@ -145,23 +145,27 @@ class PixelBasedDecoder(object):
                         return_distance=True)
             else: # gpu decode here
 
-                # hard coding some numbers here be carefule
+                # hard coding some numbers here be careful
                 step = 256*256
                 start = 0
                 stop = np.prod(normalizedPixelTraces.shape[1:])
                 normalizedPixelTraces_flat = normalizedPixelTraces.reshape(normalizedPixelTraces.shape[0], -1)
 
+                #distanceImage = np.ones(np.prod(image_shape), dtype = np.float32)
+                #decodedImage = np.zeros(np.prod(image_shape), dtype = np.int32)
+
+                # lazy list right now make it numpy
                 distances = []
                 indexes = []
                 for idx in range(start, stop, step):
                     pixels_to_decode = normalizedPixelTraces_flat[:,idx:idx+step]           
-                    ds, inds = calculate_distances_gpu(pixels_to_decode.T,                 # does this need transpose????
-                                                    self._decodingMatrixdecodingMatrix)
+                    ds, inds = calculate_distances_gpu(pixels_to_decode.T, # .T here or in function?
+                                                    self._decodingMatrix)
                     distances.append(ds)
                     indexes.append(inds)
 
-                distances = np.array(distances.flatten)
-                indexes = np.array(indexes.flatten)
+                distances = np.array(distances).flatten()
+                indexes = np.array(indexes).flatten()
 
             # remove index that are greater than distance threshold
             indexes[distances > distanceThreshold] = -1
@@ -186,9 +190,8 @@ class PixelBasedDecoder(object):
                         normalizedPixelTracesToDecode,
                         return_distance=True)
             else: # gpu decode here
-                distances, indexes = calculate_distances_gpu(normalizedPixelTraces.reshape(normalizedPixelTraces.shape[0], -1),
-                                                         self._decodingMatrixdecodingMatrix)
-        
+                raise Exception('Not implemented yet') 
+ 
             # remove index that are greater than distance threshold
             indexes[distances > distanceThreshold] = -1
 
