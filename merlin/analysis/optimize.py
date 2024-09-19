@@ -203,7 +203,7 @@ class OptimizeIteration(decode.BarcodeSavingParallelAnalysisTask):
                 initialScaleFactors[i] = \
                     np.argmin(np.abs(cumulativeHistogram-0.9)) + 2
         else:
-            initialScaleFactors = np.ones(bitCount).astype('float32')
+            initialScaleFactors = np.ones(bitCount, dtype = np.float32)
             
         return initialScaleFactors
 

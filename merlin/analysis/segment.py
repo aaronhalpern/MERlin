@@ -350,7 +350,7 @@ class CellPoseSegment(FeatureSavingAnalysisTask):
         '''Save a stack of images as a tiff file.'''
         with self.dataSet.writer_for_analysis_images(self, filename_prefix, fov) as outputTif:
              for i in range(image_stack.shape[0]):
-                    outputTif.save(image_stack[i].astype('float32'),
+                    outputTif.save(image_stack[i].astype(np.float32),
                                    photometric='MINISBLACK',
                                    contiguous=True)
 
@@ -627,7 +627,7 @@ class CellPoseSegmentSingleChannel(FeatureSavingAnalysisTask):
         '''Save a stack of images as a tiff file.'''
         with self.dataSet.writer_for_analysis_images(self, filename_prefix, fov) as outputTif:
              for i in range(image_stack.shape[0]):
-                    outputTif.save(image_stack[i].astype('float32'),
+                    outputTif.save(image_stack[i].astype(np.float32),
                                    photometric='MINISBLACK',
                                    contiguous=True)
 

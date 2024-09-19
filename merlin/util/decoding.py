@@ -116,7 +116,7 @@ class PixelBasedDecoder(object):
         if backgrounds is None:
             backgrounds = self._backgrounds
 
-        filteredImages = np.zeros(imageData.shape, dtype='float32')
+        filteredImages = np.zeros(imageData.shape, dtype= np.float32)
         filterSize = int(2 * np.ceil(2 * lowPassSigma) + 1)
         for i in range(imageData.shape[0]):
             filteredImages[i, :, :] = cv2.GaussianBlur(
@@ -396,7 +396,7 @@ class PixelBasedDecoder(object):
         barcodesSeen = np.zeros(self._barcodeCount)
         for b in range(self._barcodeCount):
             barcodeRegions = [x for x in measure.regionprops(
-                        measure.label((decodedImage == b).astype(np.int)))
+                        measure.label((decodedImage == b).astype(int)))
                               if x.area >= self.refactorAreaThreshold]
             barcodesSeen[b] = len(barcodeRegions)
             for br in barcodeRegions:
