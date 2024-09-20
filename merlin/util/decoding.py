@@ -171,7 +171,7 @@ class PixelBasedDecoder(object):
             indexes[distances > distanceThreshold] = -1
 
             # turn the filtered indexes back into the decoded image and do the magnitude filter
-            decodedImage = indexes.reshape(image_shape).astype(np.int16)
+            decodedImage = indexes.reshape(image_shape).astype(np.int32)
             decodedImage[pixelMagnitudes < magnitudeThreshold] = -1
 
             # reshape the distance image
@@ -195,7 +195,7 @@ class PixelBasedDecoder(object):
             # remove index that are greater than distance threshold
             indexes[distances > distanceThreshold] = -1
 
-            decodedImage = np.full(image_shape, -1, dtype = np.int16)
+            decodedImage = np.full(image_shape, -1, dtype = np.int32)
             decodedImage[mask] = indexes.flatten()
             decodedImage[pixelMagnitudes < magnitudeThreshold] = -1
 
