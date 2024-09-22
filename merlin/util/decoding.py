@@ -146,7 +146,8 @@ class PixelBasedDecoder(object):
             else: # gpu decode here
 
                 # hard coding some numbers here be careful
-                step = 256*256
+                step = 128*128 # 256*256 # how to best determine this number here!?
+                # this seems reasonable without too much additional overhead
                 start = 0
                 stop = np.prod(normalizedPixelTraces.shape[1:])
                 normalizedPixelTraces_flat = normalizedPixelTraces.reshape(normalizedPixelTraces.shape[0], -1)
