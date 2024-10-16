@@ -722,8 +722,12 @@ class CellPoseSegmentSingleChannel3D(FeatureSavingAnalysisTask):
         # save mask file
         if 'dump_segmented_masks' not in self.parameters:
             self.parameters['dump_segmented_masks'] = True
+        # save the raw images
+        if 'dump_segmented_images' not in self.parameters:
+            self.parameters['dump_segmented_images'] = True
+        # only save for certain FOVs?
         if 'dump_segmented_FOVs' not in self.parameters:
-            self.parameters['dump_segmented_FOVs'] = None # this should be a list
+            self.parameters['dump_segmented_FOVs'] = None # this should be a list in the json file if not None
 
         if 'use_gpu' not in self.parameters:
             self.parameters['use_gpu'] = False
@@ -863,6 +867,12 @@ class CellPoseSegmentSingleChannel3D(FeatureSavingAnalysisTask):
                     self._save_tiff_images(fragmentIndex, 'segmented_mask', masks)
             else:
                 self._save_tiff_images(fragmentIndex, 'segmented_mask', masks)
+        if self.parameters['dump_segmented_images']:
+            if self.parameters['dump_segmented_FOVs'] is not None:
+                if fragmentIndex in self.parameters['dump_segmented_FOVs']:
+                    self._save_tiff_images(fragmentIndex, 'segmented_images', seg_images)
+            else:
+                self._save_tiff_images(fragmentIndex, 'segmented_images', seg_images)
 
         # Get the boundary features
         zPos = np.array(self.dataSet.get_data_organization().get_z_positions())
