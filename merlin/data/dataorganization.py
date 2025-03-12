@@ -287,13 +287,27 @@ class DataOrganization(object):
 
         return frame
 
-    def get_z_positions(self) -> List[float]:
+    def get_z_positions(self, segmentation_only = False) -> List[float]:
         """Get the z positions present in this data organization.
-
+        
+        For the case where segmentation may have different number of frames
+            segmentation_only False ignores z positions in the segmentation columns
+            segmentation_only True only returns z positions in the segmentation columns
+            assume segmentation channelName is just dapi and/or polyt
+        
         Returns:
             A sorted list of all unique z positions
         """
-        return sorted(np.unique([y for x in self.data['zPos'] for y in x]))
+
+        # find channels that contain dapi or polyt in the channelName
+        sel = self.data['channelName'].str.contains('dapi|polyt', case = False, regex=True)
+
+        if segmentation_only is True:
+            zpos = self.data['zPos'][sel]
+        if segmentation_only is False:
+            zpos = self.data['zPos'][~sel]
+
+        return sorted(np.unique([y for x in zpos for y in x]))
 
     def get_fovs(self) -> np.ndarray:
         return np.unique(self.fileMap['fov'])

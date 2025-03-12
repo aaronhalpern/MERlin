@@ -1,10 +1,15 @@
 import os
 import cv2
 import numpy as np
+
 from skimage import measure
 from skimage import segmentation
 from skimage import exposure
 from skimage import transform
+from skimage import color
+from skimage import util
+from skimage import io
+
 import rtree
 from shapely import geometry
 from typing import List, Dict, Tuple
@@ -725,6 +730,9 @@ class CellPoseSegmentSingleChannel3D(FeatureSavingAnalysisTask):
         # save the raw images
         if 'dump_segmented_images' not in self.parameters:
             self.parameters['dump_segmented_images'] = True
+        # save rgb masks
+        if 'dump_rgb_masks' not in self.parameters:
+            self.parameters['dump_rgb_masks'] = True
         # only save for certain FOVs?
         if 'dump_segmented_FOVs' not in self.parameters:
             self.parameters['dump_segmented_FOVs'] = list(range(self.fragment_count()))
@@ -771,23 +779,30 @@ class CellPoseSegmentSingleChannel3D(FeatureSavingAnalysisTask):
         featureDB = self.get_feature_database()
         return featureDB.read_features()
 
+    # careful here
+    # modifying this to consider segmentation z positions differently
+    # see segmentation_only flag
     def _read_image_stack(self, fov: int, channelIndex: int) -> np.ndarray:
         warpTask = self.dataSet.load_analysis_task(
             self.parameters['warp_task'])
-        zPositions = self.dataSet.get_z_positions()
-        zIndices = [self.dataSet.position_to_z_index(z) for z in zPositions]
 
-        # check - get aligned images is asking for zIndex not z position
-        return np.array([warpTask.get_aligned_image(fov, channelIndex, z)
-                         for z in zIndices])
+        return np.array([warpTask.get_aligned_image(fov, channelIndex, z, segmentation_only = True)
+                         for z in range(
+                             len(self.dataSet.get_z_positions(segmentation_only = True)) # see flag
+                             )])
 
-    def _save_tiff_images(self, fov, filename_prefix, image_stack):
+    def _save_tiff_images(self, fov, filename_prefix, image_stack, use_skimage = False):
         '''Save a stack of images as a tiff file.'''
-        with self.dataSet.writer_for_analysis_images(self, filename_prefix, fov) as outputTif:
-             for frame in image_stack:
-                    outputTif.save(frame,
-                                   photometric='MINISBLACK',
-                                   contiguous=True)
+        if use_skimage:
+            image_name = self.dataSet._analysis_image_name(
+                self, filename_prefix, fov)
+            io.imsave(image_name, image_stack)
+        else:
+            with self.dataSet.writer_for_analysis_images(self, filename_prefix, fov) as outputTif:
+                for frame in image_stack:
+                        outputTif.save(frame,
+                                    photometric='MINISBLACK',
+                                    contiguous=True)
 
     ###
     # make a reader for segmented masks
@@ -805,11 +820,11 @@ class CellPoseSegmentSingleChannel3D(FeatureSavingAnalysisTask):
                 self.parameters['global_align_task'])
 
         # read channel index
-        channel_ids = self.dataSet.get_data_organization().get_data_channel_index(
+        channel_ind = self.dataSet.get_data_organization().get_data_channel_index(
                 self.parameters['channel_name'])
 
         # read images and perform segmentation
-        seg_images = self._read_image_stack(fragmentIndex, channel_ids)
+        seg_images = self._read_image_stack(fragmentIndex, channel_ind)
 
         # select the model    
         # if path_to_user_model exist, override and use user model
@@ -836,6 +851,7 @@ class CellPoseSegmentSingleChannel3D(FeatureSavingAnalysisTask):
         # 2d stitching seems smoother imo
         if self.parameters['cellpose_3D_stitching']:
             # 2d-3d stitching method
+            # this method is preferred
             cellpose_output = model.eval(seg_images, 
                                             diameter = self.parameters['diameter'], 
                                             do_3D = False,
@@ -854,7 +870,18 @@ class CellPoseSegmentSingleChannel3D(FeatureSavingAnalysisTask):
         # only take the mask output of cellpose
         # do it this way since sometimes cellpose responds with 3 or 4 outputs... weird...
         masks = cellpose_output[0]
-        
+
+        # recall that the segmentation channel may have more z positions 
+        # than the other channels
+        # so we need to pick the correct z positions in the images we just segmented
+
+        zPos = self.dataSet.get_z_positions(segmentation_only = False)
+        ind = [self.dataSet.position_to_z_index(z, segmentation_only = True) for z in zPos]
+        ind = np.array(ind).astype(int)
+
+        masks = masks[ind]
+        seg_images = seg_images[ind]
+
         # upsample the mask image if it was downsampled
         if self.parameters['downsample_factor'] is not None:
             masks = transform.resize(masks, [num_frames,rows_i,cols_i],
@@ -862,12 +889,12 @@ class CellPoseSegmentSingleChannel3D(FeatureSavingAnalysisTask):
                 preserve_range = True).astype(masks.dtype)
         
         if self.parameters['dump_segmented_masks'] and fragmentIndex in self.parameters['dump_segmented_FOVs']:
-            self._save_tiff_images(fragmentIndex, 'segmented_mask', masks)
+            self._save_tiff_images(fragmentIndex, 'segmented_mask_', masks)
         if self.parameters['dump_segmented_images'] and fragmentIndex in self.parameters['dump_segmented_FOVs']:
-            self._save_tiff_images(fragmentIndex, 'segmented_images', seg_images)
-
-        # Get the boundary features
-        zPos = np.array(self.dataSet.get_data_organization().get_z_positions())
+            self._save_tiff_images(fragmentIndex, 'segmented_images_', seg_images)
+        if self.parameters['dump_rgb_masks'] and fragmentIndex in self.parameters['dump_segmented_FOVs']:
+            rgb = color.label2rgb(masks)
+            self._save_tiff_images(fragmentIndex, 'segmented_mask_rgb_', util.img_as_ubyte(rgb), use_skimage = True)
 
         mask_values = np.unique(masks)[1:] # ignore the zero mask value
 
@@ -881,6 +908,8 @@ class CellPoseSegmentSingleChannel3D(FeatureSavingAnalysisTask):
         featureDB.write_features(featureList, fragmentIndex)
 
 class CellPoseSegmentTwoChannel3D(CellPoseSegmentSingleChannel3D):
+    
+    # probably can write one class that hands single and two channel....
 
     """
     An analysis task that determines the boundaries of features in the
@@ -968,7 +997,17 @@ class CellPoseSegmentTwoChannel3D(CellPoseSegmentSingleChannel3D):
         # only take the mask output of cellpose
         # do it this way since sometimes cellpose responds with 3 or 4 outputs... weird...
         masks = cellpose_output[0]
-        
+
+        # recall that the segmentation channel may have more z positions 
+        # than the other channels
+        # so we need to pick the correct z positions in the images we just segmented
+        zPos = self.dataSet.get_z_positions(segmentation_only = False)
+        ind = [self.dataSet.position_to_z_index(z, segmentation_only = True) for z in zPos]
+        ind = np.array(ind).astype(int)
+
+        masks = masks[ind]
+        seg_images = seg_images[ind]
+
         # upsample the mask image if it was downsampled
         if self.parameters['downsample_factor'] is not None:
             masks = transform.resize(masks, [num_frames,rows_i,cols_i],
@@ -976,13 +1015,15 @@ class CellPoseSegmentTwoChannel3D(CellPoseSegmentSingleChannel3D):
                 preserve_range = True).astype(masks.dtype)
         
         if self.parameters['dump_segmented_masks'] and fragmentIndex in self.parameters['dump_segmented_FOVs']:
-            self._save_tiff_images(fragmentIndex, 'segmented_mask', masks)
+            self._save_tiff_images(fragmentIndex, 'segmented_mask_', masks)
         if self.parameters['dump_segmented_images'] and fragmentIndex in self.parameters['dump_segmented_FOVs']:
-            self._save_tiff_images(fragmentIndex, 'segmented_images', seg_images)
-
-        # Get the boundary features
-        zPos = np.array(self.dataSet.get_data_organization().get_z_positions())
-
+            self._save_tiff_images(fragmentIndex, 'segmented_images_c1_', seg_images[:,:,:,0])
+            self._save_tiff_images(fragmentIndex, 'segmented_images_c2_', seg_images[:,:,:,1])
+        if self.parameters['dump_rgb_masks'] and fragmentIndex in self.parameters['dump_segmented_FOVs']:
+            rgb = color.label2rgb(masks)
+            self._save_tiff_images(fragmentIndex, 'segmented_mask_rgb_', util.img_as_ubyte(rgb), use_skimage = True)
+        
+        # make spatial features
         mask_values = np.unique(masks)[1:] # ignore the zero mask value
 
         featureList = [spatialfeature.SpatialFeature.feature_from_label_matrix(

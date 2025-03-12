@@ -40,7 +40,8 @@ class Warp(analysistask.ParallelAnalysisTask):
 
     def get_aligned_image_set(
             self, fov: int,
-            chromaticCorrector: aberration.ChromaticCorrector=None
+            chromaticCorrector: aberration.ChromaticCorrector=None,
+            segmentation_only = False
     ) -> np.ndarray:
         """Get the set of transformed images for the specified fov.
 
@@ -54,13 +55,14 @@ class Warp(analysistask.ParallelAnalysisTask):
                 images are arranged as [channel, zIndex, x, y]
         """
         dataChannels = self.dataSet.get_data_organization().get_data_channels()
-        zIndexes = range(len(self.dataSet.get_z_positions()))
-        return np.array([[self.get_aligned_image(fov, d, z, chromaticCorrector)
+        zIndexes = range(len(self.dataSet.get_z_positions(segmentation_only)))
+        return np.array([[self.get_aligned_image(fov, d, z, chromaticCorrector, segmentation_only)
                           for z in zIndexes] for d in dataChannels])
 
     def get_aligned_image(
             self, fov: int, dataChannel: int, zIndex: int,
-            chromaticCorrector: aberration.ChromaticCorrector=None
+            chromaticCorrector: aberration.ChromaticCorrector=None,
+            segmentation_only = False
     ) -> np.ndarray:
         """Get the specified transformed image
 
@@ -75,7 +77,7 @@ class Warp(analysistask.ParallelAnalysisTask):
             a 2-dimensional numpy array containing the specified image
         """
         inputImage = self.dataSet.get_raw_image(
-            dataChannel, fov, self.dataSet.z_index_to_position(zIndex))
+            dataChannel, fov, self.dataSet.z_index_to_position(zIndex, segmentation_only))
         transformation = self.get_transformation(fov, dataChannel)
 
         if chromaticCorrector is not None:

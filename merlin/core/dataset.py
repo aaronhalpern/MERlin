@@ -1191,12 +1191,13 @@ class MERFISHDataSet(ImageDataSet):
         # TODO - this should be implemented using the position of the fov.
         return self.positions.loc[fov]['X'], self.positions.loc[fov]['Y']
 
-    def z_index_to_position(self, zIndex: int) -> float:
+    # adding segmentation_only flag for cases where segmentation channels have different number of z positions
+    def z_index_to_position(self, zIndex: int, segmentation_only = False) -> float:
         """Get the z position associated with the provided z index."""
 
-        return self.get_z_positions()[zIndex]
+        return self.get_z_positions(segmentation_only)[zIndex]
 
-    def position_to_z_index(self, zPosition: float) -> int:
+    def position_to_z_index(self, zPosition: float, segmentation_only = False) -> int:
         """Get the z index associated with the specified z position
         
         Raises:
@@ -1204,19 +1205,19 @@ class MERFISHDataSet(ImageDataSet):
                 dataset
         """
 
-        zIndex = np.where(self.get_z_positions() == zPosition)[0]
+        zIndex = np.where(self.get_z_positions(segmentation_only) == zPosition)[0]
         if len(zIndex) == 0:
             raise Exception('Requested z=%0.2f position not found.' % zPosition)
 
         return zIndex[0]
 
-    def get_z_positions(self) -> List[float]:
+    def get_z_positions(self, segmentation_only = False) -> List[float]:
         """Get the z positions present in this dataset.
 
         Returns:
             A sorted list of all unique z positions
         """
-        return self.dataOrganization.get_z_positions()
+        return self.dataOrganization.get_z_positions(segmentation_only)
 
     def get_fovs(self) -> List[int]:
         return self.dataOrganization.get_fovs()
