@@ -215,18 +215,19 @@ class FiducialCorrelationWarp(Warp):
         if 'highpass_sigma' not in self.parameters:
             self.parameters['highpass_sigma'] = 3
 
-        # add this parameter to control the next two parameters
-        # if beads are not sparse its probably not necessary...
-            #percentile_pixel_to_keep
-            #edge_width_to_remove
-        if 'sparse_bead_fix' not in self.parameters:
-            self.parameters['sparse_bead_fix'] = False
+        if 'median_filter' not in self.parameters:
+            self.parameters['median_filter'] = False
 
-        # xingjie parameters to add
+        # add some parameters that may help for sparse beads
+        # from Xingjie branch
+
         if 'percentile_pixel_to_keep' not in self.parameters:
-            self.parameters['percentile_pixel_to_keep'] = 99
-        if 'edge_width_to_remove' not in self.parameters: # not entirely sure the point of this one...
-            self.parameters['edge_width_to_remove'] = 10
+            self.parameters['percentile_pixel_to_keep'] = 100 # 100 will keep all pixels, 1 will only keep top 1% - different from xingjie 
+
+        # not entirely sure the point of this one...
+        # may be useful if the PSF at the edges is aberrated?
+        if 'edge_width_to_remove' not in self.parameters: 
+            self.parameters['edge_width_to_remove'] = 200
 
     def fragment_count(self):
         return len(self.dataSet.get_fovs())
@@ -245,28 +246,25 @@ class FiducialCorrelationWarp(Warp):
         highPassFilterSize = int(2 * np.ceil(2 * highPassSigma) + 1)
 
         # median filter to deal with hot pixels
-        inputImage = cv2.medianBlur(inputImage, ksize = 3)
+        if self.parameters['median_filter']:
+            inputImage = cv2.medianBlur(inputImage, ksize = 3)
 
         high_passed_img = inputImage.astype(float) - cv2.GaussianBlur(
             inputImage, (highPassFilterSize, highPassFilterSize),
             highPassSigma, borderType=cv2.BORDER_REPLICATE)
         
-        # add some features from Xingjie https://github.com/xingjiepan/MERlin/blob/xingjie/merlin/analysis/warp.py
-        
-        if self.parameters['sparse_bead_fix']:
+        # Remove the boundaries
+        edge_width_to_remove = self.parameters['edge_width_to_remove']
+        high_passed_img[:edge_width_to_remove] = 0
+        high_passed_img[high_passed_img.shape[0] - edge_width_to_remove:] = 0
+        high_passed_img[:, :edge_width_to_remove] = 0
+        high_passed_img[:, high_passed_img.shape[1] - edge_width_to_remove:] = 0
 
-            # Remove the boundaries
-            edge_width_to_remove = self.parameters['edge_width_to_remove']
-            high_passed_img[:edge_width_to_remove] = 0
-            high_passed_img[high_passed_img.shape[0] - edge_width_to_remove:] = 0
-            high_passed_img[:, :edge_width_to_remove] = 0
-            high_passed_img[:, high_passed_img.shape[1] - edge_width_to_remove:] = 0
-
-            # Only keep the most bright pixels
-            # this is useful for sparse beads
-            percentile_pixel_to_keep = self.parameters['percentile_pixel_to_keep']
-            high_passed_img[high_passed_img <
-                    np.percentile(high_passed_img, percentile_pixel_to_keep)] = 0
+        # Only keep the most bright pixels
+        # this is useful for sparse beads
+        percentile_pixel_to_keep = self.parameters['percentile_pixel_to_keep']
+        high_passed_img[high_passed_img <
+                np.percentile(high_passed_img, 100 - percentile_pixel_to_keep)] = 0
 
         return high_passed_img        
 

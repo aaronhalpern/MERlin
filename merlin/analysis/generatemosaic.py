@@ -105,7 +105,12 @@ class GenerateMosaic(analysistask.AnalysisTask):
         maximumProjection = False
         if 'z_index' in self.parameters:
             if self.parameters['z_index'] != 'maximum_projection':
-                zIndexes = [self.parameters['z_index']]
+                if isinstance(self.parameters['z_index'], list):
+                    zIndexes = self.parameters['z_index']
+                elif isinstance(self.parameters['z_index'], int):
+                    zIndexes = [self.parameters['z_index']]
+                else:
+                    raise ValueError("z_index parameter not a list or int")
             else:
                 maximumProjection = True
                 zIndexes = [0]
@@ -157,15 +162,21 @@ class GenerateMosaic(analysistask.AnalysisTask):
 
         mosaic = np.zeros(np.flip(mosaicDimensions, axis=0), dtype=np.uint16)
 
+        data_channel_name = self.dataSet.get_data_organization().get_data_channel_name(dataChannel)
+
+        segmentation_only = False
+        if 'dapi' in data_channel_name.lower() or 'polyt' in data_channel_name.lower():
+            segmentation_only = True
+
         for f in self.dataSet.get_fovs():
             if maximumProjection:
                 inputImage = np.max([warpTask.get_aligned_image(
-                    f, dataChannel, z, chromaticCorrector)
-                    for z in range(len(self.dataSet.get_z_positions()))],
+                    f, dataChannel, z, chromaticCorrector, segmentation_only)
+                    for z in range(len(self.dataSet.get_z_positions(segmentation_only)))],
                     axis=0)
             else:
                 inputImage = warpTask.get_aligned_image(
-                    f, dataChannel, zIndex, chromaticCorrector)
+                    f, dataChannel, zIndex, chromaticCorrector, segmentation_only)
 
             if cropWidth > 0:
                 inputImage[:cropWidth, :] = 0
