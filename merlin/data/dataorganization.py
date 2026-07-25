@@ -1,3 +1,4 @@
+import datetime
 import os
 import re
 from typing import List
@@ -429,6 +430,8 @@ class DataOrganization(object):
         """
 
         expectedImageSize = None
+        validatedSizes = {}
+        checkedFileCount = 0
         for dataChannel in self.get_data_channels():
             for fov in self.get_fovs():
                 channelInfo = self.data.iloc[dataChannel]
@@ -442,20 +445,30 @@ class DataOrganization(object):
                         (channelInfo['imageType'], fov,
                          channelInfo['imagingRound']))
 
-                if not self._dataSet.rawDataPortal.open_file(
-                        imagePath).exists():
-                    raise InputDataError(
-                        ('Image data for channel {0} and fov {1} not found. '
-                         'Expected at {2}')
-                        .format(dataChannel, fov, imagePath))
+                if imagePath in validatedSizes:
+                    imageSize = validatedSizes[imagePath]
+                else:
+                    if not self._dataSet.rawDataPortal.open_file(
+                            imagePath).exists():
+                        raise InputDataError(
+                            ('Image data for channel {0} and fov {1} not found. '
+                             'Expected at {2}')
+                            .format(dataChannel, fov, imagePath))
 
-                try:
-                    imageSize = self._dataSet.image_stack_size(imagePath)
-                except Exception as e:
-                    raise InputDataError(
-                        ('Unable to determine image stack size for fov {0} from'
-                         ' data channel {1} at {2}')
-                        .format(dataChannel, fov, imagePath))
+                    try:
+                        imageSize = self._dataSet.image_stack_size(imagePath)
+                    except Exception as e:
+                        raise InputDataError(
+                            ('Unable to determine image stack size for fov {0} from'
+                             ' data channel {1} at {2}')
+                            .format(dataChannel, fov, imagePath))
+
+                    validatedSizes[imagePath] = imageSize
+                    checkedFileCount += 1
+                    if checkedFileCount % 100 == 0:
+                        print('%s - Checked %i files for the file map' %
+                              (datetime.datetime.now(), checkedFileCount),
+                              flush=True)
 
                 frames = channelInfo['frame']
 

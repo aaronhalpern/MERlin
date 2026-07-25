@@ -305,7 +305,6 @@ class TifReader(Reader):
                 self.number_frames = 1
                 self.image_height = isize[0]
                 self.image_width = isize[1]
-                self.page_data = self.fileptr.asarray()
 
             # Otherwise we'll memmap it in case it is really large.
             else:
@@ -313,12 +312,13 @@ class TifReader(Reader):
                 self.number_frames = isize[0]
                 self.image_height = isize[1]
                 self.image_width = isize[2]
-                self.page_data = self.fileptr.asarray(out='memmap')
 
         # Multiple page Tiff file.
         #
         else:
-            isize = self.fileptr.asarray(key=0).shape
+            # TiffPage.shape reads the shape from the page's tags, which
+            # avoids decoding pixel data just to determine the image size.
+            isize = self.fileptr.pages[0].shape
 
             # Check for one frame per page.
             if len(isize) == 2:
@@ -341,11 +341,23 @@ class TifReader(Reader):
             print("{0:0d} frames per page, {1:0d} pages".format(
                 self.frames_per_page, number_pages))
 
+    def _load_page_data(self):
+        # Deferred until the first frame is actually requested, since
+        # materializing a compressed stack (asarray) can be very slow and
+        # callers that only need film_size() (e.g. filemap validation)
+        # never touch pixel data.
+        if self.number_frames == 1:
+            self.page_data = self.fileptr.asarray()
+        else:
+            self.page_data = self.fileptr.asarray(out='memmap')
+
     def load_frame(self, frame_number, cast_to_int16=True):
         super(TifReader, self).load_frame(frame_number)
 
         # All the data is on a single page.
         if self.number_frames == self.frames_per_page:
+            if self.page_data is None:
+                self._load_page_data()
             if self.number_frames == 1:
                 image_data = self.page_data
             else:
