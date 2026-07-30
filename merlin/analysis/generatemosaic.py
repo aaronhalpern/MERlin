@@ -275,7 +275,7 @@ class GenerateMosaicSimple(analysistask.AnalysisTask):
 
     def intialize_mosaic(self):
         xmin_um, ymin_um = np.amin(self.positions, axis = 0)
-        xmax_um, ymax_um = np.amax(self.positions + self.tile_dim * self.mosaicMicronsPerPixel, axis = 0)
+        xmax_um, ymax_um = np.amax(self.positions + self.tile_dim * self.dataSet.get_microns_per_pixel(), axis = 0)
         mosaicy = np.ceil((ymax_um - ymin_um) / self.mosaicMicronsPerPixel).astype(int)
         mosaicx = np.ceil((xmax_um - xmin_um) / self.mosaicMicronsPerPixel).astype(int)
 
@@ -312,7 +312,7 @@ class GenerateMosaicSimple(analysistask.AnalysisTask):
             cval=0,               # fill value for constant mode
             preserve_range=True)
 
-        cropWidth = self.parameters['fov_crop_width']
+        cropWidth = self.parameters['fov_crop_width'] // self.parameters['downsample']
         if cropWidth > 0:
             inputImage[:cropWidth, :] = 0
             inputImage[-cropWidth:, :] = 0
