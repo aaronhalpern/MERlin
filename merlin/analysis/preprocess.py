@@ -282,11 +282,14 @@ class DeconvolutionPreprocess(Preprocess):
         deconFilterSize = self.parameters['decon_filter_size']
 
         filteredImage = self._high_pass_filter(inputImage)
-        deconvolvedImage = deconvolve.deconvolve_lucyrichardson(
-            filteredImage, deconFilterSize, self._deconSigma,
-            self._deconIterations).astype(np.uint16)
-        return deconvolvedImage
-
+        # bypass decon
+        if self._deconIterations > 0:
+            deconvolvedImage = deconvolve.deconvolve_lucyrichardson(
+                filteredImage, deconFilterSize, self._deconSigma,
+                self._deconIterations).astype(np.uint16)
+            return deconvolvedImage
+        else:
+            return filteredImage
 
 class DeconvolutionPreprocessDW(Preprocess):
     
